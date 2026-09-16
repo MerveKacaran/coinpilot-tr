@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.py[cod]
+.env
+.flaskenv
+.idea/
+.vscode/
+coinpilot_mobile/
+build/
+.gradle/
+*.apk

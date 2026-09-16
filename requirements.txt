@@ -1,0 +1,4 @@
+Flask==3.0.3
+gunicorn==22.0.0
+ccxt==4.4.96
+websocket-client==1.8.0

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>CoinPilot TR · Teknik Radar</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/pro.css') }}">
+  <script defer src="{{ url_for('static', filename='js/pro.js') }}"></script>
+</head>
+<body>
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">◈ CoinPilot <i>TR</i></div>
+    <p>Canlı teknik analiz asistanı</p>
+    <nav>
+      <button class="nav active" data-page="home">⌂ <span>Ana Sayfa</span></button>
+      <button class="nav" data-page="radar">◉ <span>Teknik Radar</span></button>
+      <button class="nav" data-page="positions">▣ <span>Pozisyonlarım</span></button>
+      <button class="nav" data-page="market">↗ <span>Piyasa Hareketi</span></button>
+    </nav>
+    <div class="sidebar-foot">
+      Günlük · 4 Saat · 1 Saat<br>
+      RSI · Fisher · MACD · EMA200<br>
+      Fibonacci · Trend kırılımı
+    </div>
+  </aside>
+  <section class="shell">
+    <header>
+      <button id="menu-toggle" class="icon mobile-only">☰</button>
+      <div>
+        <small id="page-label">ANA SAYFA</small>
+        <h1 id="title">Bugün ne yapmalıyım?</h1>
+      </div>
+      <div class="live"><span id="live-dot"></span><b id="live-status">Bağlanıyor</b><time id="clock">--:--:--</time><button id="scan-button">Taramayı yenile</button></div>
+    </header>
+    <main>
+      <section class="page active" id="page-home">
+        <div class="stats">
+          <article><small>Portföy değeri</small><b id="portfolio-value">₺0</b></article>
+          <article><small>Toplam kâr / zarar</small><b id="portfolio-profit">₺0</b><em id="portfolio-percent">+0,00%</em></article>
+          <article><small>Açık işlem</small><b id="position-count">0</b></article>
+          <article><small>Kurala uygun radar</small><b id="setup-count">0</b></article>
+        </div>
+        <section class="section-head"><div><small>AÇIK POZİSYONLAR</small><h2>İşlemlerim</h2></div><button class="link" data-goto="positions">Tümünü gör</button></section>
+        <div class="positions top-positions" id="home-positions"></div>
+        <section class="section-head"><div><small>RADAR ÖZETİ</small><h2>Öne çıkan teknik sinyaller</h2></div><button class="link" data-goto="radar">Radarı aç</button></section>
+        <div id="home-radar" class="compact-radar"></div>
+      </section>
+
+      <section class="page" id="page-radar">
+        <div class="callout">
+          <b>Çoklu zaman dilimi taraması</b>
+          <span>Her coin Günlük, 4 Saat ve 1 Saat için RSI(14) &gt; 50, Fisher(30) &gt; 0, yukarı MACD kesişimi ve EMA200 üstü koşullarıyla kontrol edilir.</span>
+        </div>
+        <div class="section-head"><div><small>CANLI TEKNİK RADAR</small><h2>Kurallı işlem adayları</h2></div><span class="muted" id="radar-time">—</span></div>
+        <div id="radar-grid" class="radar-grid"></div>
+      </section>
+
+      <section class="page" id="page-positions">
+        <section class="section-head"><div><small>SANAL PORTFÖY</small><h2>Pozisyonlarım</h2></div></section>
+        <div id="position-page-list" class="positions"></div>
+        <section class="section-head history-title"><div><small>GÜNLÜK İŞLEM DÖKÜMÜ</small><h2>İşlem geçmişi</h2></div></section>
+        <div class="table-wrap"><table><thead><tr><th>Tarih</th><th>Coin</th><th>Giriş</th><th>Satış</th><th>Sonuç</th></tr></thead><tbody id="history"></tbody></table></div>
+      </section>
+
+      <section class="page" id="page-market">
+        <div class="market-columns">
+          <section class="panel"><small class="positive">YÜKSELENLER</small><h2>En çok yükselen 5 coin</h2><div id="gainers"></div></section>
+          <section class="panel"><small class="negative">DÜŞENLER</small><h2>En çok düşen 5 coin</h2><div id="losers"></div></section>
+        </div>
+      </section>
+    </main>
+    <footer>CoinPilot TR · Version 4.0.0 · Developed by <b>Merve Kaçaranlıoğlu Topçu</b> · Teknik sinyaller yatırım tavsiyesi değildir.</footer>
+  </section>
+
+  <dialog id="detail-dialog"><button class="close" data-close="detail-dialog">×</button><div id="detail-content"></div></dialog>
+  <dialog id="trade-dialog">
+    <button class="close" data-close="trade-dialog">×</button>
+    <form id="trade-form" method="dialog">
+      <small>SANAL İŞLEM</small><h2 id="trade-title">İşlem aç</h2><p id="trade-entry">—</p>
+      <label>Kaç TL yatırıyorsun?<input id="trade-amount" type="number" min="1" step="1" required></label>
+      <div class="auto-levels"><div><small>Otomatik hedef</small><b id="trade-target">—</b></div><div><small>Koruyucu stop</small><b id="trade-stop">—</b></div></div>
+      <p class="muted">Hedef ve stop; Fibonacci, destek/direnç ve son swing seviyelerine göre otomatik hesaplanır.</p>
+      <button class="wide" type="submit">İŞLEMİ AÇ</button>
+    </form>
+  </dialog>
+</body>
+</html>
