@@ -1,4 +1,6 @@
-# CoinPilot TR 4.1.0
+# CoinPilot TR 4.1.1
+
+Canlı akış düzeltmesi: BtcTurk üretim akışındaki `LA` (ve eski `La`) alanları desteklenir; alınan alış/satış kotasyonları da güncellenir. Yalnızca geçerli fiyat mesajı işlendiğinde canlı veri durumu gösterilir. Kapanmış mum önbelleği sonraki mum kapanışına kadar korunur; istek sınırına yaklaşılırsa kapsamı daraltma uyarısı verilir. Akış alanları gerçek bir genel piyasa mesajıyla doğrulandı; resmi referans: https://docs.btcturk.com/docs/websocket-feed/models/
 
 ## Kullanım
 

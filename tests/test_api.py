@@ -13,7 +13,7 @@ class ApiTests(unittest.TestCase):
     def test_template_and_version(self):
         response=self.client.get('/')
         self.assertEqual(response.status_code,200)
-        self.assertIn(b'4.1.0',response.data)
+        self.assertIn(web.VERSION.encode(),response.data)
 
     def test_each_single_frame(self):
         for key in web.FRAME_SPECS:
@@ -52,6 +52,23 @@ class ApiTests(unittest.TestCase):
 
     def test_invalid_backtest_costs(self):
         self.assertEqual(self.client.get('/api/backtest?symbol=TESTTRY&fee=NaN').status_code,400)
+
+    def test_real_websocket_uppercase_la_updates_quote(self):
+        with patch.dict(web.markets,{},clear=True):
+            self.assertTrue(web.apply_ticker({'PS':'BTCTRY','LA':'100','DP':'2','B':'99','A':'101','V':'8'}))
+            q=web.markets['BTC/TRY']
+            self.assertEqual(q['price'],100);self.assertEqual(q['price_source'],'WebSocket')
+            self.assertEqual(q['bid'],99);self.assertEqual(q['ask'],101)
+            self.assertEqual(q['volume_try'],800)
+            self.assertTrue(web.apply_ticker({'PS':'BTCTRY','La':'102','DP':'3'}))
+            self.assertEqual(web.markets['BTC/TRY']['price'],102)
+
+    def test_invalid_socket_payload_does_not_claim_live_data(self):
+        with patch.object(web,'ws_last',0):
+            web.ws_message(None,'[401,{"items":[{"PS":"BTCTRY","LA":"bad"}]}]')
+            self.assertEqual(web.ws_last,0)
+            web.ws_message(None,'[401,{"items":[{"PS":"BTCTRY","LA":"103"}]}]')
+            self.assertGreater(web.ws_last,0)
 
 
 if __name__=='__main__':unittest.main()

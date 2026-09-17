@@ -4,6 +4,7 @@ import math
 import os
 import threading
 import time
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from urllib.parse import urlencode
@@ -21,6 +22,7 @@ market_lock=threading.RLock()
 rest_lock=threading.Lock()
 cache_lock=threading.RLock()
 markets={}; candle_cache={}; radar_cache={}
+graph_requests=deque()
 rest_at=0.0; ws_last=0.0; ws_connected=False; ws_started=False
 STABLE_ASSETS={'USDT','USDC','FDUSD','TUSD','DAI'}
 DEFAULT_FRAME_KEYS=('one_hour',)
@@ -79,17 +81,24 @@ def rest_seed():
 
 def apply_ticker(data):
     pair=canonical_symbol(data.get('PS') or data.get('pair') or data.get('pairSymbol'))
-    if not pair or pair.split('/')[0] in STABLE_ASSETS:return
+    if not pair or pair.split('/')[0] in STABLE_ASSETS:return False
     try:
-        price=float(data.get('La',data.get('last')))
-        if not math.isfinite(price) or price<=0:return
+        # Production feed uses LA; older documentation uses La.
+        price=float(data.get('LA',data.get('La',data.get('last'))))
+        if not math.isfinite(price) or price<=0:return False
         with market_lock:
             previous=markets.get(pair,{})
             markets[pair]={**previous,'symbol':pair,'pair':pair.replace('/',''),'price':price,
                            'change':float(data.get('DP',data.get('dailyPercent',previous.get('change',0))) or 0),
                            'formatted_price':f'{price:,.4f} ₺','volume_try':previous.get('volume_try',0),
                            'price_updated_at':iso(),'price_source':'WebSocket','_at':time.time()}
-    except (TypeError,ValueError):return
+            for field,short in (('bid','B'),('ask','A')):
+                value=float(data.get(short,previous.get(field)) or 0)
+                if math.isfinite(value) and value>0:markets[pair][field]=value
+            volume=float(data.get('V') or 0)
+            if math.isfinite(volume) and volume>0:markets[pair]['volume_try']=volume*price
+        return True
+    except (TypeError,ValueError):return False
 
 
 def ws_open(ws):
@@ -103,10 +112,10 @@ def ws_message(ws,message):
     try:
         packet=json.loads(message)
         if packet[0]==401:
-            for item in packet[1].get('items',[]):apply_ticker(item)
-            ws_last=time.monotonic()
+            applied=[apply_ticker(item) for item in packet[1].get('items',[])]
+            if any(applied):ws_last=time.monotonic()
         elif packet[0]==402:
-            apply_ticker(packet[1]);ws_last=time.monotonic()
+            if apply_ticker(packet[1]):ws_last=time.monotonic()
     except (ValueError,TypeError,IndexError,KeyError,AttributeError):return
 
 
@@ -154,14 +163,22 @@ def get_candles(pair,key,count=450):
     now=int(time.time()); cache_key=(pair,key,count,now//duration)
     with cache_lock:
         cached=candle_cache.get(cache_key)
-        if cached and time.monotonic()-cached[0]<60:return cached[1]
+        # Analysis only uses closed candles, so a result is stable until the next close.
+        if cached:return cached[1]
+        moment=time.monotonic()
+        while graph_requests and moment-graph_requests[0]>=600:graph_requests.popleft()
+        # Leave headroom below the provider's 600 requests / 10 minute limit.
+        if len(graph_requests)>=500:raise ValueError('Mum veri istek sınırına yaklaşıldı; kapsamı daralt veya birkaç dakika sonra dene.')
+        graph_requests.append(moment)
     query=urlencode(dict(symbol=pair,resolution=resolution,**{'from':now-(count+10)*duration,'to':now}))
     req=Request('https://graph-api.btcturk.com/v1/klines/history?'+query,headers={'User-Agent':'CoinPilotTR/'+VERSION})
     with urlopen(req,timeout=12) as response:data=json.loads(response.read())
     if data.get('s')!='ok':raise ValueError('Mum geçmişi bulunamadı.')
     candles=validate_candles(data,duration,now)
     with cache_lock:
-        if len(candle_cache)>1200:candle_cache.clear()
+        if len(candle_cache)>1000:
+            for old in list(candle_cache):
+                if old[3]!=now//FRAME_SPECS[old[1]][2]:candle_cache.pop(old)
         candle_cache[cache_key]=(time.monotonic(),candles)
     return candles
 

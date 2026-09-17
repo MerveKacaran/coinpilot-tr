@@ -17,4 +17,5 @@ with web.app.test_client() as client:
     print('Dashboard seconds:',round(time.monotonic()-start,3),'pairs:',dashboard.get('market_count'),'source:',dashboard.get('source'),flush=True)
     assert response.get('scanned')==8 and not response.get('scanning'),response
     assert dashboard.get('quotes',{}).get('BTC/TRY',{}).get('price',0)>0
+    assert dashboard['quotes']['BTC/TRY']['price_source']=='WebSocket',dashboard['quotes']['BTC/TRY']
     print('PASS live public-data smoke')
