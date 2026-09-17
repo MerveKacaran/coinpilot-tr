@@ -1,4 +1,6 @@
-# CoinPilot TR 4.1.1
+# CoinPilot TR 4.1.2
+
+4.1.2: Kullanıcının talebiyle manuel sanal işlemde teknik teyit, SAT sinyali ve %8 stop mesafesi engelleri kaldırıldı. Bunlar uyarı olarak gösterilir; aşağıdaki 5/5 ve %8 kuralları yalnızca teknik uygunluk değerlendirmesi ve geçmiş test için geçerlidir. Geçerli hedef/stop yoksa seviye uydurulmaz; pozisyon bu seviyeler olmadan izlenebilir. Güncel fiyat ve geçerli tutar kontrolü korunur.
 
 Canlı akış düzeltmesi: BtcTurk üretim akışındaki `LA` (ve eski `La`) alanları desteklenir; alınan alış/satış kotasyonları da güncellenir. Yalnızca geçerli fiyat mesajı işlendiğinde canlı veri durumu gösterilir. Kapanmış mum önbelleği sonraki mum kapanışına kadar korunur; istek sınırına yaklaşılırsa kapsamı daraltma uyarısı verilir. Akış alanları gerçek bir genel piyasa mesajıyla doğrulandı; resmi referans: https://docs.btcturk.com/docs/websocket-feed/models/
 
