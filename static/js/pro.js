@@ -9,6 +9,7 @@ const state = {
   gainers: [],
   losers: [],
   signals: [],
+  marketAnalysis: null,
   selected: null,
   positions: JSON.parse(localStorage.getItem(positionKey) || '[]'),
   history: JSON.parse(localStorage.getItem(historyKey) || '[]'),
@@ -166,17 +167,79 @@ function renderCompactRadar() {
 function renderMarket() {
   renderMarketList(byId('gainers'), state.gainers);
   renderMarketList(byId('losers'), state.losers);
+  const symbols = byId('market-symbols');
+  symbols.replaceChildren();
+  Object.keys(state.prices).sort().forEach(symbol => {
+    const option = document.createElement('option');
+    option.value = symbol;
+    symbols.append(option);
+  });
+  renderMarketAnalysis();
 }
 
 function renderMarketList(target, coins) {
   target.replaceChildren();
   coins.forEach(coin => {
-    const row = create('div', 'market-row');
+    const row = create('div', 'market-row clickable');
     row.append(create('b', '', coin.symbol));
     row.append(create('span', '', coin.formatted_price));
     row.append(create('strong', coin.change >= 0 ? 'positive' : 'negative', percent(coin.change)));
+    row.tabIndex = 0;
+    row.setAttribute('role', 'button');
+    row.setAttribute('aria-label', coin.symbol + ' teknik analizini aç');
+    row.addEventListener('click', () => analyzeMarketSymbol(coin.symbol));
+    row.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') analyzeMarketSymbol(coin.symbol);
+    });
     target.append(row);
   });
+}
+
+function normalizeMarketSymbol(value) {
+  const compact = String(value || '').toUpperCase().replace(/[\s_\/-]/g, '');
+  if (!compact || !compact.endsWith('TRY') || compact.length <= 3) return null;
+  return compact.slice(0, -3) + '/TRY';
+}
+
+function renderMarketAnalysis() {
+  const target = byId('market-analysis');
+  target.replaceChildren();
+  if (!state.marketAnalysis) return;
+  target.append(signalCard(state.marketAnalysis));
+}
+
+async function analyzeMarketSymbol(value) {
+  const symbol = normalizeMarketSymbol(value);
+  const input = byId('market-search-input');
+  const message = byId('market-search-message');
+  const action = byId('market-search-button');
+  if (!symbol) {
+    message.textContent = 'Bir BtcTurk TRY paritesi yaz: örneğin WIF/TRY.';
+    return;
+  }
+  input.value = symbol;
+  if (!state.prices[symbol]) {
+    message.textContent = symbol + ' BtcTurk TRY listesinde bulunamadı.';
+    return;
+  }
+  action.disabled = true;
+  state.marketAnalysis = null;
+  byId('market-analysis').replaceChildren(create('div', 'panel empty', symbol + ' için Günlük, 4 Saat, 1 Saat ve 15 Dakika analizi hazırlanıyor…'));
+  message.textContent = 'Canlı mum verisi ve risk hesabı alınıyor…';
+  try {
+    const response = await fetch('/api/analyze?symbol=' + encodeURIComponent(symbol));
+    const data = await response.json();
+    if (!response.ok || data.status !== 'success') throw new Error(data.message || 'analysis');
+    state.marketAnalysis = data.item;
+    message.textContent = symbol + ' analizi güncellendi: ' + new Date(data.updated_at).toLocaleTimeString('tr-TR');
+    renderMarketAnalysis();
+  } catch (error) {
+    const detail = error && error.message && error.message !== 'analysis' ? error.message : 'Analiz şu an hazırlanamadı. Yeniden dene.';
+    message.textContent = detail;
+    byId('market-analysis').replaceChildren();
+  } finally {
+    action.disabled = false;
+  }
 }
 
 function renderRadar() {
@@ -541,6 +604,13 @@ document.querySelectorAll('[data-goto]').forEach(node => node.addEventListener('
 document.querySelectorAll('[data-close]').forEach(node => node.addEventListener('click', () => byId(node.dataset.close).close()));
 byId('menu-toggle').addEventListener('click', () => byId('sidebar').classList.toggle('open'));
 byId('scan-button').addEventListener('click', () => loadRadar(true));
+byId('market-search-button').addEventListener('click', () => analyzeMarketSymbol(byId('market-search-input').value));
+byId('market-search-input').addEventListener('keydown', event => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    analyzeMarketSymbol(event.currentTarget.value);
+  }
+});
 byId('trade-form').addEventListener('submit', event => {
   event.preventDefault();
   const amount = Number(byId('trade-amount').value);

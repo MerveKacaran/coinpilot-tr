@@ -49,7 +49,14 @@ def public_market(item: dict) -> dict:
 
 
 def canonical_symbol(raw: object) -> str | None:
-    raw = str(raw or "").upper().replace("_", "")
+    raw = (
+        str(raw or "")
+        .upper()
+        .replace("_", "")
+        .replace("/", "")
+        .replace("-", "")
+        .replace(" ", "")
+    )
     if raw.endswith("TRY") and len(raw) > 3:
         return f"{raw[:-3]}/TRY"
     return None
@@ -586,6 +593,49 @@ def radar():
             "status": "success",
             "items": items,
             "scanning": scanning,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+
+
+@app.get("/api/analyze")
+def analyze_symbol():
+    """Run the complete technical checklist for one BtcTurk TRY pair."""
+    pair = canonical_symbol(request.args.get("symbol"))
+    if not pair:
+        return jsonify(
+            {
+                "status": "error",
+                "message": "Örnek kullanım: WIF/TRY veya WIFTRY.",
+            }
+        ), 400
+    try:
+        coin = next(
+            (item for item in current_markets() if item["symbol"] == pair), None
+        )
+    except ccxt.BaseError:
+        return jsonify(
+            {"status": "error", "message": "BtcTurk piyasa verisine ulaşılamıyor."}
+        ), 503
+    if not coin:
+        return jsonify(
+            {
+                "status": "error",
+                "message": f"{pair}, BtcTurk TRY paritelerinde bulunamadı.",
+            }
+        ), 404
+    item = scan_coin(coin)
+    if not item:
+        return jsonify(
+            {
+                "status": "error",
+                "message": f"{pair} için mum verisi şu an hazırlanamadı.",
+            }
+        ), 503
+    return jsonify(
+        {
+            "status": "success",
+            "item": item,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
     )

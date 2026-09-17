@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>CoinPilot TR · Teknik Radar</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/pro.css') }}">
-  <style>.detail-frame p{white-space:pre-line}.frame.clickable{cursor:pointer}.frame.clickable:hover,.frame.clickable:focus{outline:1px solid #70a1ff;background:#173252}</style>
+  <style>.detail-frame p{white-space:pre-line}.frame.clickable,.market-row.clickable{cursor:pointer}.frame.clickable:hover,.frame.clickable:focus{outline:1px solid #70a1ff;background:#173252}.market-search{margin-bottom:14px}.market-search p{font-size:12px;line-height:1.55}.search-line{display:flex;gap:9px;align-items:center}.search-line input{margin:0}.search-line button{white-space:nowrap}.market-analysis{margin-bottom:14px}.market-row.clickable:hover{color:#fff;background:#132845;padding-left:8px;padding-right:8px;border-radius:8px}@media(max-width:670px){.search-line{align-items:stretch;flex-direction:column}.search-line button{width:100%}}</style>
   <script defer src="{{ url_for('static', filename='js/pro.js') }}"></script>
 </head>
 <body>
@@ -66,6 +66,14 @@
       </section>
 
       <section class="page" id="page-market">
+        <section class="panel market-search">
+          <small>TEK COIN ANALİZİ</small>
+          <h2>İstediğin BtcTurk coinini incele</h2>
+          <p class="muted">Örnek: <b>WIF/TRY</b>. Aşağıdaki yükselen veya düşen coinlerden birine de doğrudan tıklayabilirsin.</p>
+          <div class="search-line"><input id="market-search-input" list="market-symbols" placeholder="WIF/TRY yaz…" autocomplete="off"><datalist id="market-symbols"></datalist><button id="market-search-button" type="button">ANALİZ ET</button></div>
+          <p id="market-search-message" class="muted"></p>
+        </section>
+        <div id="market-analysis" class="market-analysis"></div>
         <div class="market-columns">
           <section class="panel"><small class="positive">YÜKSELENLER</small><h2>En çok yükselen 5 coin</h2><div id="gainers"></div></section>
           <section class="panel"><small class="negative">DÜŞENLER</small><h2>En çok düşen 5 coin</h2><div id="losers"></div></section>
