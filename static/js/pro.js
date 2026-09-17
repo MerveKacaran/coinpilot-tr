@@ -89,7 +89,7 @@ function updateTimeframeSummary(message) {
   const names = state.activeFrames
     .map(key => frameCatalog.find(item => item[0] === key)?.[1])
     .filter(Boolean);
-  byId('timeframe-summary').textContent = message || (names.join(' · ') + ' seçili. Listede yalnızca seçilen tüm periyotlarda 5/5 olanlar görünür.');
+  byId('timeframe-summary').textContent = message || (names.join(' · ') + ' seçili. Seçili periyotlardan en az birinde 3/5 olan adaylar listelenir.');
 }
 
 function syncTimeframeControls() {
@@ -135,9 +135,7 @@ function renderDashboard() {
   byId('portfolio-percent').textContent = percent(cost ? gain / cost * 100 : 0);
   byId('portfolio-percent').className = gain >= 0 ? 'positive' : 'negative';
   byId('position-count').textContent = String(state.positions.length);
-  byId('setup-count').textContent = String(
-    state.signals.filter(signal => signal.all_frames_passed).length,
-  );
+  byId('setup-count').textContent = String(state.signals.length);
   renderPositions();
   renderCompactRadar();
   renderMarket();
@@ -312,7 +310,7 @@ function renderRadar() {
       .map(key => frameCatalog.find(item => item[0] === key)?.[1])
       .filter(Boolean)
       .join(' · ');
-    grid.append(create('div', 'panel empty', names + ' seçimine göre 5/5 teknik teyit alan coin bulunamadı. Başka bir periyot kombinasyonu deneyebilirsin.'));
+    grid.append(create('div', 'panel empty', names + ' seçimine göre en az 3/5 teknik teyit alan coin bulunamadı. Başka bir periyot kombinasyonu deneyebilirsin.'));
     return;
   }
   state.signals.forEach(signal => grid.append(signalCard(signal)));
@@ -355,6 +353,12 @@ function frameSummary(frame) {
   ].join('\n');
 }
 
+function frameStage(frame, minimum = 3) {
+  if (frame.core_pass) return 'UYGUN';
+  if (frame.checks_passed >= minimum) return 'İZLE';
+  return 'BEKLE';
+}
+
 function signalCard(signal) {
   const kind = signalKind(signal);
   const card = create('article', 'signal');
@@ -373,9 +377,10 @@ function signalCard(signal) {
   const checks = create('div', 'frame-list');
   const frameList = frameEntries(signal);
   frameList.forEach(item => {
-    const frame = create('div', 'frame clickable ' + (item[1].core_pass ? 'ok' : ''));
+    const stage = frameStage(item[1], signal.minimum_checks || 3);
+    const frame = create('div', 'frame clickable ' + (stage === 'UYGUN' ? 'ok' : stage === 'İZLE' ? 'candidate' : ''));
     frame.append(create('b', '', item[0]));
-    frame.append(create('span', 'tag', item[1].checks_passed + '/5 ' + (item[1].core_pass ? 'UYGUN · DETAY' : 'BEKLE · DETAY')));
+    frame.append(create('span', 'tag', item[1].checks_passed + '/5 ' + stage + ' · DETAY'));
     frame.tabIndex = 0;
     frame.setAttribute('role', 'button');
     frame.setAttribute('aria-label', item[0] + ' koşul detayını aç');
@@ -414,7 +419,13 @@ function signalCard(signal) {
   card.append(metrics);
   const actions = create('div', 'signal-actions');
   actions.append(button('GRAFİK & DETAY', 'detail', () => showDetail(signal)));
-  const tradeText = signal.sell_setup ? 'SAT UYARISI' : signal.risk_ok ? 'İŞLEM AÇ' : 'RİSK FAZLA';
+  const tradeText = signal.sell_setup
+    ? 'SAT UYARISI'
+    : !signal.all_frames_passed
+      ? 'TEYİT EKSİK'
+      : signal.risk_ok
+        ? 'İŞLEM AÇ'
+        : 'RİSK FAZLA';
   const trade = button(tradeText, '', () => openTrade(signal));
   trade.disabled = !signal.can_open_trade;
   actions.append(trade);
@@ -461,7 +472,14 @@ function showDetail(signal) {
   box.append(levels);
   const rule = create('p', 'muted', 'Kontrol listesi: EMA200 üstü · RSI(10) 50 üstü ve yukarı ivmeli · MACD sıfır üstü/sıfıra yakın ve mavi çizgi kırmızının üstünde · Fisher(30) sıfır üstü/sıfıra yakın ve mavi çizgi kırmızının üstünde · son kapanan mumda ortalama üstü hacim. SAT kuralı: Fisher(30) sıfır altına iner ve MACD aşağı keser. Stop mesafesi %8’i geçerse işlem açma kapatılır.');
   box.append(rule);
-  const open = button(signal.sell_setup ? 'SAT UYARISI AKTİF' : signal.risk_ok ? 'SANAL İŞLEM AÇ' : 'RİSK FAZLA · İŞLEM AÇILAMAZ', 'wide', () => {
+  const openText = signal.sell_setup
+    ? 'SAT UYARISI AKTİF'
+    : !signal.all_frames_passed
+      ? 'TEYİT EKSİK · İŞLEM AÇILAMAZ'
+      : signal.risk_ok
+        ? 'SANAL İŞLEM AÇ'
+        : 'RİSK FAZLA · İŞLEM AÇILAMAZ';
+  const open = button(openText, 'wide', () => {
     dialog.close();
     openTrade(signal);
   });
@@ -473,7 +491,9 @@ function showDetail(signal) {
 
 function detailFrame(name, frame) {
   const card = create('div', 'detail-frame');
-  card.append(create('b', frame.core_pass ? 'positive' : 'negative', name + ' · ' + frame.checks_passed + '/5 ' + (frame.core_pass ? 'UYGUN' : 'BEKLE')));
+  const stage = frameStage(frame);
+  const tone = stage === 'UYGUN' ? 'positive' : stage === 'BEKLE' ? 'negative' : '';
+  card.append(create('b', tone, name + ' · ' + frame.checks_passed + '/5 ' + stage));
   card.append(create('p', '', frameSummary(frame) + '\nRetest ' + (frame.retest ? 'var' : 'bekliyor')));
   return card;
 }

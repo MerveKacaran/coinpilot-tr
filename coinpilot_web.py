@@ -27,6 +27,7 @@ STABLE_ASSETS = {"USDT", "USDC", "FDUSD", "TUSD", "DAI"}
 RSI_PERIOD = 10
 VOLUME_PERIOD = 20
 MAX_STOP_PCT = 8.0
+MINIMUM_CANDIDATE_CHECKS = 3
 MACD_NEAR_ZERO_RATIO = 0.0025
 FISHER_NEAR_ZERO = -0.15
 FRAME_SPECS = {
@@ -473,6 +474,12 @@ def scan_coin(coin: dict, frame_keys: tuple[str, ...]) -> dict | None:
         selected_frames = list(frames.values())
         passed = sum(frame["core_pass"] for frame in selected_frames)
         all_frames_passed = all(frame["core_pass"] for frame in selected_frames)
+        qualifying_frames = [
+            frame
+            for frame in selected_frames
+            if frame["checks_passed"] >= MINIMUM_CANDIDATE_CHECKS
+        ]
+        meets_minimum = bool(qualifying_frames)
         trend_frames = [
             frames[key]
             for key in ("four_hour", "one_hour")
@@ -517,6 +524,8 @@ def scan_coin(coin: dict, frame_keys: tuple[str, ...]) -> dict | None:
             action = "GÜÇLÜ AL"
         elif all_frames_passed:
             action = "AL İZLE"
+        elif meets_minimum:
+            action = "İZLE"
         else:
             action = "BEKLE"
         chart_frame = frames.get("one_hour") or selected_frames[-1]
@@ -526,6 +535,9 @@ def scan_coin(coin: dict, frame_keys: tuple[str, ...]) -> dict | None:
             "score": int(max(0, min(100, score))),
             "passed_frames": passed,
             "selected_frame_count": len(selected_frames),
+            "qualifying_frame_count": len(qualifying_frames),
+            "minimum_checks": MINIMUM_CANDIDATE_CHECKS,
+            "meets_minimum": meets_minimum,
             "all_frames_passed": all_frames_passed,
             "frame_keys": frame_keys,
             "trend_confirmed": trend_confirmed,
@@ -572,9 +584,7 @@ def get_radar(
             scanned = list(
                 executor.map(lambda coin: scan_coin(coin, frame_keys), candidates)
             )
-        items = [
-            item for item in scanned if item and item["all_frames_passed"]
-        ]
+        items = [item for item in scanned if item and item["meets_minimum"]]
         items.sort(key=lambda item: item["score"], reverse=True)
         radar_cache[cache_key] = {"at": time.monotonic(), "items": items}
         return items, False
