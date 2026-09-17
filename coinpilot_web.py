@@ -26,6 +26,9 @@ exchange = ccxt.btcturk({"enableRateLimit": True, "timeout": 15000})
 STABLE_ASSETS = {"USDT", "USDC", "FDUSD", "TUSD", "DAI"}
 RSI_PERIOD = 10
 VOLUME_PERIOD = 20
+MAX_STOP_PCT = 8.0
+MACD_NEAR_ZERO_RATIO = 0.0025
+FISHER_NEAR_ZERO = -0.15
 market_lock = threading.RLock()
 scan_lock = threading.Lock()
 markets: dict[str, dict] = {}
@@ -227,6 +230,14 @@ def rsi(values: list[float], period: int = RSI_PERIOD) -> float:
     return 100 - 100 / (1 + gains / losses)
 
 
+def rsi_series(values: list[float], period: int = RSI_PERIOD) -> list[float]:
+    """Return an RSI series so the radar can distinguish momentum from level."""
+    output = [50.0] * len(values)
+    for index in range(period, len(values)):
+        output[index] = rsi(values[: index + 1], period)
+    return output
+
+
 def macd(values: list[float]) -> tuple[list[float], list[float]]:
     fast = ema(values, 12)
     slow = ema(values, 26)
@@ -262,6 +273,10 @@ def recent_cross_down(line: list[float], signal: list[float]) -> bool:
         if line[index - 1] >= signal[index - 1] and line[index] < signal[index]:
             return True
     return False
+
+
+def recent_level_cross_up(values: list[float], level: float) -> bool:
+    return recent_cross_up(values, [level] * len(values))
 
 
 def volume_status(volumes: list[float], period: int = VOLUME_PERIOD) -> tuple[float, float, float, bool]:
@@ -301,23 +316,38 @@ def analyse_frame(name: str, candles: dict[str, list[float]], live_price: float)
     line, signal = macd(closes)
     fisher_values = fisher(adjusted, 30)
     breakout, retest = trend_info(adjusted)
-    ema_200 = ema(closes, 200)[-1]
-    rsi_value = rsi(closes, RSI_PERIOD)
+    ema_values = ema(closes, 200)
+    ema_200 = ema_values[-1]
+    rsi_values = rsi_series(closes, RSI_PERIOD)
+    rsi_value = rsi_values[-1]
     fisher_value = fisher_values[-1]
     fisher_signal = [fisher_values[0], *fisher_values[:-1]]
     up_cross = recent_cross_up(line, signal)
     down_cross = recent_cross_down(line, signal)
     fisher_cross_up = recent_cross_up(fisher_values, fisher_signal)
     fisher_cross_down = recent_cross_down(fisher_values, fisher_signal)
-    fisher_rising = fisher_values[-1] > fisher_values[-2]
+    rsi_cross_up = recent_level_cross_up(rsi_values, 50)
+    rsi_rising = rsi_values[-1] > rsi_values[-2] >= rsi_values[-3]
+    rsi_condition = rsi_value > 50 and (rsi_cross_up or rsi_rising)
+    fisher_rising = (
+        fisher_values[-1] > fisher_values[-2] >= fisher_values[-3]
+    )
     macd_above_zero = line[-1] > 0
-    macd_condition = up_cross or macd_above_zero
-    fisher_condition = fisher_value > 0 and (fisher_cross_up or fisher_rising)
+    macd_near_zero = abs(line[-1]) <= abs(live_price) * MACD_NEAR_ZERO_RATIO
+    macd_rising = line[-1] > line[-2] >= line[-3]
+    macd_bullish = up_cross or (line[-1] > signal[-1] and macd_rising)
+    macd_condition = (macd_above_zero or macd_near_zero) and macd_bullish
+    fisher_near_zero = fisher_value >= FISHER_NEAR_ZERO
+    fisher_bullish = fisher_cross_up or (
+        fisher_values[-1] > fisher_signal[-1] and fisher_rising
+    )
+    fisher_condition = fisher_near_zero and fisher_bullish
+    ema_cross_up = recent_cross_up(closes, ema_values)
     closed_volume, average_volume, volume_ratio, above_average_volume = volume_status(
         candles["v"]
     )
     core_pass = (
-        rsi_value > 50
+        rsi_condition
         and fisher_condition
         and macd_condition
         and live_price > ema_200
@@ -325,7 +355,7 @@ def analyse_frame(name: str, candles: dict[str, list[float]], live_price: float)
     )
     checks_passed = sum(
         (
-            rsi_value > 50,
+            rsi_condition,
             fisher_condition,
             macd_condition,
             live_price > ema_200,
@@ -335,16 +365,25 @@ def analyse_frame(name: str, candles: dict[str, list[float]], live_price: float)
     return {
         "name": name,
         "rsi": round(rsi_value, 2),
+        "rsi_cross_up": rsi_cross_up,
+        "rsi_rising": rsi_rising,
+        "rsi_condition": rsi_condition,
         "fisher": round(fisher_value, 4),
         "fisher_rising": fisher_rising,
         "fisher_cross_up": fisher_cross_up,
         "fisher_cross_down": fisher_cross_down,
+        "fisher_near_zero": fisher_near_zero,
+        "fisher_bullish": fisher_bullish,
         "fisher_condition": fisher_condition,
         "ema200": ema_200,
         "above_ema200": live_price > ema_200,
+        "ema_cross_up": ema_cross_up,
         "macd_cross_up": up_cross,
         "macd_cross_down": down_cross,
         "macd_above_zero": macd_above_zero,
+        "macd_near_zero": macd_near_zero,
+        "macd_rising": macd_rising,
+        "macd_bullish": macd_bullish,
         "macd_condition": macd_condition,
         "closed_volume": closed_volume,
         "average_volume": average_volume,
@@ -431,6 +470,8 @@ def scan_coin(coin: dict) -> dict | None:
         critical_low, critical_high = sorted((fib["618"], fib["786"]))
         in_fib_zone = critical_low <= coin["price"] <= critical_high
         target, extended_target = exit_levels(coin["price"], fib)
+        stop_candidate = min(fib["786"] * 0.992, fib["support"] * 0.99)
+        stop = stop_candidate if 0 < stop_candidate < coin["price"] else coin["price"] * 0.97
         score = (
             passed * 18
             + (14 if fifteen_minute["core_pass"] else 0)
@@ -439,16 +480,18 @@ def scan_coin(coin: dict) -> dict | None:
         )
         if sell_setup:
             score = min(score, 28)
+        stop_pct = (coin["price"] - stop) / coin["price"] * 100
+        risk_ok = stop_pct <= MAX_STOP_PCT
         if sell_setup:
             action = "SAT"
+        elif passed == 3 and not risk_ok:
+            action = "RİSKLİ BEKLE"
         elif all_frames_passed and trend_confirmed and in_fib_zone:
             action = "GÜÇLÜ AL"
         elif passed == 3:
             action = "AL İZLE"
         else:
             action = "BEKLE"
-        stop_candidate = min(fib["786"] * 0.992, fib["support"] * 0.99)
-        stop = stop_candidate if 0 < stop_candidate < coin["price"] else coin["price"] * 0.97
         return {
             "coin": public_market(coin),
             "action": action,
@@ -458,11 +501,14 @@ def scan_coin(coin: dict) -> dict | None:
             "trend_confirmed": trend_confirmed,
             "in_fib_zone": in_fib_zone,
             "sell_setup": sell_setup,
+            "risk_ok": risk_ok,
+            "max_stop_pct": MAX_STOP_PCT,
+            "can_open_trade": not sell_setup and risk_ok and passed == 3,
             "target": target,
             "extended_target": extended_target,
             "stop": stop,
             "target_pct": (target - coin["price"]) / coin["price"] * 100,
-            "stop_pct": (coin["price"] - stop) / coin["price"] * 100,
+            "stop_pct": stop_pct,
             "fib": fib,
             "frames": {
                 "daily": daily,

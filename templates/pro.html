@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>CoinPilot TR · Teknik Radar</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/pro.css') }}">
-  <style>.detail-frame p{white-space:pre-line}</style>
+  <style>.detail-frame p{white-space:pre-line}.frame.clickable{cursor:pointer}.frame.clickable:hover,.frame.clickable:focus{outline:1px solid #70a1ff;background:#173252}</style>
   <script defer src="{{ url_for('static', filename='js/pro.js') }}"></script>
 </head>
 <body>
@@ -50,7 +50,7 @@
       <section class="page" id="page-radar">
         <div class="callout">
           <b>Çoklu zaman dilimi taraması</b>
-          <span>Günlük, 4 Saat, 1 Saat ve 15 Dakika: RSI(10) &gt; 50, Fisher(30) sıfır üstü ve yukarı yönlü, MACD yukarı kesişim veya sıfır üstü, EMA200 üstü ve ortalama üstü hacim kontrol edilir. 15 dakika yalnızca giriş zamanlaması doğrulamasıdır.</span>
+          <span>Günlük, 4 Saat, 1 Saat ve 15 Dakika: EMA200 üstü; RSI(10) 50 üstünde ve yukarı ivmeli; MACD sıfır üstü/sıfıra yakın ve mavi çizgi kırmızının üstünde; Fisher(30) sıfır üstü/sıfıra yakın ve yukarı yönlü olmalı. Son kapanan mumda ortalama üstü hacim aranır. 15 dakika giriş zamanlaması doğrulamasıdır.</span>
         </div>
         <section class="section-head radar-positions-head"><div><small>AÇIK POZİSYONLAR · RADAR</small><h2>İşlemlerim</h2></div><button class="link" data-goto="positions">Portföye git</button></section>
         <div class="positions top-positions" id="radar-positions"></div>

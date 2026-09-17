@@ -190,23 +190,38 @@ function renderRadar() {
 }
 
 function frameSummary(frame) {
+  const rsi = frame.rsi_cross_up
+    ? '50 seviyesini alttan yukarı kesti'
+    : frame.rsi_rising
+      ? '50 üstünde yukarı ivmeli'
+      : 'ivme teyidi bekliyor';
+  const macdLevel = frame.macd_above_zero
+    ? 'sıfır üstü'
+    : frame.macd_near_zero
+      ? 'sıfıra yakın'
+      : 'sıfır altında';
   const macd = frame.macd_cross_up
-    ? 'yukarı kesişim'
-    : frame.macd_above_zero
-      ? 'sıfır üstü'
+    ? 'mavi kırmızıyı yukarı kesti'
+    : frame.macd_bullish
+      ? 'mavi kırmızının üstünde, yukarı ivmeli'
       : frame.macd_cross_down
         ? 'aşağı kesişim'
-        : 'bekliyor';
+        : 'mavi/kırmızı teyidi bekliyor';
+  const fisherLevel = frame.fisher >= 0
+    ? 'sıfır üstü'
+    : frame.fisher_near_zero
+      ? 'sıfıra yakın'
+      : 'sıfır altında';
   const fisher = frame.fisher_cross_up
-    ? 'yukarı kesti'
-    : frame.fisher_rising
-      ? 'yukarı yönlü'
-      : 'yön bekliyor';
+    ? 'mavi kırmızıyı yukarı kesti'
+    : frame.fisher_bullish
+      ? 'mavi kırmızının üstünde, yukarı ivmeli'
+      : 'mavi/kırmızı teyidi bekliyor';
   return [
-    'RSI(10) ' + Number(frame.rsi).toFixed(1) + (frame.rsi > 50 ? ' ✓' : ' ✕'),
-    'Fisher(30) ' + Number(frame.fisher).toFixed(2) + ' · ' + fisher + (frame.fisher_condition ? ' ✓' : ' ✕'),
-    'MACD ' + macd + (frame.macd_condition ? ' ✓' : ' ✕'),
-    'EMA200 ' + (frame.above_ema200 ? 'üstünde ✓' : 'altında ✕'),
+    'RSI(10) ' + Number(frame.rsi).toFixed(1) + ' · ' + rsi + (frame.rsi_condition ? ' ✓' : ' ✕'),
+    'Fisher(30) ' + Number(frame.fisher).toFixed(2) + ' · ' + fisherLevel + ' · ' + fisher + (frame.fisher_condition ? ' ✓' : ' ✕'),
+    'MACD ' + macdLevel + ' · ' + macd + (frame.macd_condition ? ' ✓' : ' ✕'),
+    'EMA200 ' + (frame.above_ema200 ? 'üstünde' : 'altında') + (frame.ema_cross_up ? ' · yeni yukarı geçti' : '') + (frame.above_ema200 ? ' ✓' : ' ✕'),
     'Hacim x' + Number(frame.volume_ratio).toFixed(2) + (frame.above_average_volume ? ' ✓' : ' ✕'),
   ].join('\n');
 }
@@ -234,15 +249,24 @@ function signalCard(signal) {
     ['15 Dakika', signal.frames.fifteen_minute],
   ];
   frameList.forEach(item => {
-    const frame = create('div', 'frame ' + (item[1].core_pass ? 'ok' : ''));
+    const frame = create('div', 'frame clickable ' + (item[1].core_pass ? 'ok' : ''));
     frame.append(create('b', '', item[0]));
-    frame.append(create('span', 'tag', item[1].checks_passed + '/5 ' + (item[1].core_pass ? 'UYGUN' : 'BEKLE')));
+    frame.append(create('span', 'tag', item[1].checks_passed + '/5 ' + (item[1].core_pass ? 'UYGUN · DETAY' : 'BEKLE · DETAY')));
+    frame.tabIndex = 0;
+    frame.setAttribute('role', 'button');
+    frame.setAttribute('aria-label', item[0] + ' koşul detayını aç');
+    frame.addEventListener('click', () => showFrameDetail(signal, item[0], item[1]));
+    frame.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') showFrameDetail(signal, item[0], item[1]);
+    });
     checks.append(frame);
   });
   const note = create('div', 'fib-note ' + (signal.in_fib_zone ? 'good' : ''));
-  note.textContent = signal.in_fib_zone
+  const fibText = signal.in_fib_zone
     ? 'Fib 0.618–0.786 geri çekilme bölgesinde · İlk satış: ' + money(signal.target)
     : 'Fib 0.618–0.786 retest bölgesi: ' + money(signal.fib['786']) + ' – ' + money(signal.fib['618']);
+  const maxStop = Number(signal.max_stop_pct || 8);
+  note.textContent = fibText + (signal.risk_ok ? '' : ' · Stop %' + Number(signal.stop_pct).toFixed(1) + ', izin verilen %' + maxStop.toFixed(0) + ' sınırını aşıyor');
   checks.append(note);
   content.append(checks);
   card.append(content);
@@ -266,8 +290,9 @@ function signalCard(signal) {
   card.append(metrics);
   const actions = create('div', 'signal-actions');
   actions.append(button('GRAFİK & DETAY', 'detail', () => showDetail(signal)));
-  const trade = button(signal.sell_setup ? 'SAT UYARISI' : 'İŞLEM AÇ', '', () => openTrade(signal));
-  trade.disabled = signal.sell_setup;
+  const tradeText = signal.sell_setup ? 'SAT UYARISI' : signal.risk_ok ? 'İŞLEM AÇ' : 'RİSK FAZLA';
+  const trade = button(tradeText, '', () => openTrade(signal));
+  trade.disabled = !signal.can_open_trade;
   actions.append(trade);
   card.append(actions);
 
@@ -285,7 +310,7 @@ function showDetail(signal) {
   const heading = create('div');
   heading.append(create('small', '', 'DETAYLI TEKNİK ANALİZ'));
   heading.append(create('h2', '', signal.coin.symbol + ' · ' + signal.action));
-  heading.append(create('p', 'muted', '1 saatlik grafik ve üç zaman dilimi kontrolü'));
+  heading.append(create('p', 'muted', '1 saatlik grafik ve dört zaman dilimi kontrolü'));
   box.append(heading);
   const chart = document.createElement('canvas');
   chart.className = 'detail-chart';
@@ -315,13 +340,13 @@ function showDetail(signal) {
     levels.append(level);
   });
   box.append(levels);
-  const rule = create('p', 'muted', 'Kontrol listesi: RSI(10) > 50 · Fisher(30) sıfır üstü ve yukarı yönlü · MACD yukarı kesişim veya sıfır üstü · fiyat EMA200 üstü · son kapanan mumda ortalama üstü hacim. SAT kuralı: Fisher(30) sıfır altına iner ve MACD aşağı keser. Fib 0.618–0.786 retest bölgesidir; satış planı direnç ve Fib 1.272 uzatmasına göre verilir.');
+  const rule = create('p', 'muted', 'Kontrol listesi: EMA200 üstü · RSI(10) 50 üstü ve yukarı ivmeli · MACD sıfır üstü/sıfıra yakın ve mavi çizgi kırmızının üstünde · Fisher(30) sıfır üstü/sıfıra yakın ve mavi çizgi kırmızının üstünde · son kapanan mumda ortalama üstü hacim. SAT kuralı: Fisher(30) sıfır altına iner ve MACD aşağı keser. Stop mesafesi %8’i geçerse işlem açma kapatılır.');
   box.append(rule);
-  const open = button(signal.sell_setup ? 'SAT UYARISI AKTİF' : 'SANAL İŞLEM AÇ', 'wide', () => {
+  const open = button(signal.sell_setup ? 'SAT UYARISI AKTİF' : signal.risk_ok ? 'SANAL İŞLEM AÇ' : 'RİSK FAZLA · İŞLEM AÇILAMAZ', 'wide', () => {
     dialog.close();
     openTrade(signal);
   });
-  open.disabled = signal.sell_setup;
+  open.disabled = !signal.can_open_trade;
   box.append(open);
   dialog.showModal();
   requestAnimationFrame(() => drawLine(chart, signal.chart, signalColor(signalKind(signal)), true));
@@ -334,8 +359,20 @@ function detailFrame(name, frame) {
   return card;
 }
 
+function showFrameDetail(signal, name, frame) {
+  const dialog = byId('detail-dialog');
+  const box = byId('detail-content');
+  box.replaceChildren();
+  box.append(create('small', '', 'ZAMAN DİLİMİ KONTROLÜ'));
+  box.append(create('h2', '', signal.coin.symbol + ' · ' + name));
+  box.append(create('p', 'muted', 'Karttaki ' + frame.checks_passed + '/5 alanına tıkladın. Her kural aşağıda tek tek açıklanır.'));
+  box.append(detailFrame(name, frame));
+  box.append(create('p', 'muted', '✓ = koşul sağlandı · ✕ = bu zaman diliminde teyit bekleniyor. 15 dakika, yalnızca giriş zamanlamasını güçlendirir; ana trend için Günlük, 4 Saat ve 1 Saat birlikte değerlendirilir.'));
+  dialog.showModal();
+}
+
 function openTrade(signal) {
-  if (signal.sell_setup) return;
+  if (!signal.can_open_trade) return;
   state.selected = signal;
   byId('trade-title').textContent = signal.coin.symbol + ' · Sanal İşlem Aç';
   byId('trade-entry').textContent = 'Anlık giriş: ' + money(signal.coin.price);
