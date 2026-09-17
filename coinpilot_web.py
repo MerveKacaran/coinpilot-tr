@@ -29,6 +29,14 @@ VOLUME_PERIOD = 20
 MAX_STOP_PCT = 8.0
 MACD_NEAR_ZERO_RATIO = 0.0025
 FISHER_NEAR_ZERO = -0.15
+FRAME_SPECS = {
+    "daily": ("Günlük", "D", 390 * 86400),
+    "four_hour": ("4 Saat", "240", 300 * 4 * 3600),
+    "one_hour": ("1 Saat", "60", 300 * 3600),
+    "fifteen_minute": ("15 Dakika", "15", 300 * 15 * 60),
+    "five_minute": ("5 Dakika", "5", 300 * 5 * 60),
+}
+DEFAULT_FRAME_KEYS = ("daily", "four_hour", "one_hour", "fifteen_minute")
 market_lock = threading.RLock()
 scan_lock = threading.Lock()
 markets: dict[str, dict] = {}
@@ -36,7 +44,7 @@ rest_at = 0.0
 ws_connected = False
 ws_last = 0.0
 ws_started = False
-radar_cache: dict = {"at": 0.0, "items": [], "scanning": False}
+radar_cache: dict[str, dict] = {}
 
 
 def price_text(price: float) -> str:
@@ -60,6 +68,17 @@ def canonical_symbol(raw: object) -> str | None:
     if raw.endswith("TRY") and len(raw) > 3:
         return f"{raw[:-3]}/TRY"
     return None
+
+
+def selected_frame_keys(raw: str | None) -> tuple[str, ...]:
+    """Return valid user-selected timeframes in the product's display order."""
+    if raw is None or not raw.strip():
+        return DEFAULT_FRAME_KEYS
+    requested = {item.strip() for item in raw.split(",") if item.strip()}
+    keys = tuple(key for key in FRAME_SPECS if key in requested)
+    if not keys:
+        raise ValueError("En az bir zaman dilimi seçmelisin.")
+    return keys
 
 
 def rest_seed() -> None:
@@ -439,96 +458,92 @@ def exit_levels(price: float, fib: dict) -> tuple[float, float]:
     return first_target, extension_target
 
 
-def scan_coin(coin: dict) -> dict | None:
+def scan_coin(coin: dict, frame_keys: tuple[str, ...]) -> dict | None:
+    """Analyse a coin only on the timeframes the user has enabled."""
     try:
-        daily = analyse_frame(
-            "Günlük", get_candles(coin["pair"], "D", 390 * 86400), coin["price"]
+        frames: dict[str, dict] = {}
+        for key in frame_keys:
+            name, resolution, seconds = FRAME_SPECS[key]
+            frames[key] = analyse_frame(
+                name,
+                get_candles(coin["pair"], resolution, seconds),
+                coin["price"],
+            )
+
+        selected_frames = list(frames.values())
+        passed = sum(frame["core_pass"] for frame in selected_frames)
+        all_frames_passed = all(frame["core_pass"] for frame in selected_frames)
+        trend_frames = [
+            frames[key]
+            for key in ("four_hour", "one_hour")
+            if key in frames
+        ]
+        trend_confirmed = any(
+            frame["trend_break"] and frame["retest"] for frame in trend_frames
         )
-        four_hour = analyse_frame(
-            "4 Saat",
-            get_candles(coin["pair"], "240", 300 * 4 * 3600),
-            coin["price"],
+        sell_setup = any(
+            frame["fisher"] < 0 and frame["macd_cross_down"]
+            for frame in selected_frames
         )
-        one_hour = analyse_frame(
-            "1 Saat",
-            get_candles(coin["pair"], "60", 300 * 3600),
-            coin["price"],
+
+        fib_frame = next(
+            (
+                frames[key]
+                for key in ("four_hour", "one_hour", "fifteen_minute", "five_minute", "daily")
+                if key in frames
+            ),
+            selected_frames[0],
         )
-        fifteen_minute = analyse_frame(
-            "15 Dakika",
-            get_candles(coin["pair"], "15", 300 * 15 * 60),
-            coin["price"],
-        )
-        higher_frames = [daily, four_hour, one_hour]
-        frames = [*higher_frames, fifteen_minute]
-        passed = sum(frame["core_pass"] for frame in higher_frames)
-        all_frames_passed = all(frame["core_pass"] for frame in frames)
-        trend_confirmed = (
-            one_hour["trend_break"]
-            and one_hour["retest"]
-            or four_hour["trend_break"]
-            and four_hour["retest"]
-        )
-        sell_setup = one_hour["fisher"] < 0 and one_hour["macd_cross_down"]
-        sell_setup = sell_setup or (
-            four_hour["fisher"] < 0 and four_hour["macd_cross_down"]
-        )
-        fib = fib_levels(four_hour)
+        fib = fib_levels(fib_frame)
         critical_low, critical_high = sorted((fib["618"], fib["786"]))
         in_fib_zone = critical_low <= coin["price"] <= critical_high
         target, extended_target = exit_levels(coin["price"], fib)
         stop_candidate = min(fib["786"] * 0.992, fib["support"] * 0.99)
         stop = stop_candidate if 0 < stop_candidate < coin["price"] else coin["price"] * 0.97
-        score = (
-            passed * 18
-            + (14 if fifteen_minute["core_pass"] else 0)
-            + (14 if trend_confirmed else 0)
-            + (10 if in_fib_zone else 0)
-        )
-        if sell_setup:
-            score = min(score, 28)
         stop_pct = (coin["price"] - stop) / coin["price"] * 100
         risk_ok = stop_pct <= MAX_STOP_PCT
+        check_score = sum(frame["checks_passed"] for frame in selected_frames)
+        score = check_score / (len(selected_frames) * 5) * 76
+        score += 14 if trend_confirmed else 0
+        score += 10 if in_fib_zone else 0
+        if sell_setup:
+            score = min(score, 28)
+
         if sell_setup:
             action = "SAT"
-        elif passed == 3 and not risk_ok:
+        elif all_frames_passed and not risk_ok:
             action = "RİSKLİ BEKLE"
         elif all_frames_passed and trend_confirmed and in_fib_zone:
             action = "GÜÇLÜ AL"
-        elif passed == 3:
+        elif all_frames_passed:
             action = "AL İZLE"
         else:
             action = "BEKLE"
+        chart_frame = frames.get("one_hour") or selected_frames[-1]
         return {
             "coin": public_market(coin),
             "action": action,
             "score": int(max(0, min(100, score))),
             "passed_frames": passed,
+            "selected_frame_count": len(selected_frames),
             "all_frames_passed": all_frames_passed,
+            "frame_keys": frame_keys,
             "trend_confirmed": trend_confirmed,
             "in_fib_zone": in_fib_zone,
             "sell_setup": sell_setup,
             "risk_ok": risk_ok,
             "max_stop_pct": MAX_STOP_PCT,
-            "can_open_trade": not sell_setup and risk_ok and passed == 3,
+            "can_open_trade": not sell_setup and risk_ok and all_frames_passed,
             "target": target,
             "extended_target": extended_target,
             "stop": stop,
             "target_pct": (target - coin["price"]) / coin["price"] * 100,
             "stop_pct": stop_pct,
             "fib": fib,
-            "frames": {
-                "daily": daily,
-                "four_hour": four_hour,
-                "one_hour": one_hour,
-                "fifteen_minute": fifteen_minute,
-            },
-            "chart": one_hour["closes"][-90:],
+            "frames": frames,
+            "chart": chart_frame["closes"][-90:],
             "radar": [
-                1 if daily["core_pass"] else 0.28,
-                1 if four_hour["core_pass"] else 0.28,
-                1 if one_hour["core_pass"] else 0.28,
-                1 if fifteen_minute["core_pass"] else 0.28,
+                *[1 if frame["core_pass"] else 0.28 for frame in selected_frames],
                 1 if trend_confirmed else 0.28,
                 1 if in_fib_zone else 0.28,
             ],
@@ -538,24 +553,32 @@ def scan_coin(coin: dict) -> dict | None:
         return None
 
 
-def get_radar(force: bool = False) -> tuple[list[dict], bool]:
+def get_radar(
+    force: bool = False, frame_keys: tuple[str, ...] = DEFAULT_FRAME_KEYS
+) -> tuple[list[dict], bool]:
     now = time.monotonic()
-    if not force and radar_cache["items"] and now - radar_cache["at"] < 300:
-        return radar_cache["items"], False
+    cache_key = ",".join(frame_keys)
+    cached = radar_cache.get(cache_key, {"at": 0.0, "items": []})
+    if not force and cached["items"] and now - cached["at"] < 300:
+        return cached["items"], False
     if not scan_lock.acquire(blocking=False):
-        return radar_cache["items"], True
-    radar_cache["scanning"] = True
+        return cached["items"], True
     try:
         values = current_markets()
-        candidates = sorted(values, key=lambda item: item.get("volume_try", 0), reverse=True)[:8]
+        candidates = sorted(
+            values, key=lambda item: item.get("volume_try", 0), reverse=True
+        )[:8]
         with ThreadPoolExecutor(max_workers=4) as executor:
-            scanned = list(executor.map(scan_coin, candidates))
-        items = [item for item in scanned if item]
+            scanned = list(
+                executor.map(lambda coin: scan_coin(coin, frame_keys), candidates)
+            )
+        items = [
+            item for item in scanned if item and item["all_frames_passed"]
+        ]
         items.sort(key=lambda item: item["score"], reverse=True)
-        radar_cache.update({"at": time.monotonic(), "items": items, "scanning": False})
+        radar_cache[cache_key] = {"at": time.monotonic(), "items": items}
         return items, False
     finally:
-        radar_cache["scanning"] = False
         scan_lock.release()
 
 
@@ -587,12 +610,17 @@ def dashboard():
 
 @app.get("/api/radar")
 def radar():
-    items, scanning = get_radar(request.args.get("force") == "1")
+    try:
+        frame_keys = selected_frame_keys(request.args.get("frames"))
+    except ValueError as error:
+        return jsonify({"status": "error", "message": str(error)}), 400
+    items, scanning = get_radar(request.args.get("force") == "1", frame_keys)
     return jsonify(
         {
             "status": "success",
             "items": items,
             "scanning": scanning,
+            "frame_keys": frame_keys,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
     )
@@ -610,6 +638,10 @@ def analyze_symbol():
             }
         ), 400
     try:
+        frame_keys = selected_frame_keys(request.args.get("frames"))
+    except ValueError as error:
+        return jsonify({"status": "error", "message": str(error)}), 400
+    try:
         coin = next(
             (item for item in current_markets() if item["symbol"] == pair), None
         )
@@ -624,7 +656,7 @@ def analyze_symbol():
                 "message": f"{pair}, BtcTurk TRY paritelerinde bulunamadı.",
             }
         ), 404
-    item = scan_coin(coin)
+    item = scan_coin(coin, frame_keys)
     if not item:
         return jsonify(
             {
@@ -636,6 +668,7 @@ def analyze_symbol():
         {
             "status": "success",
             "item": item,
+            "frame_keys": frame_keys,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
     )

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>CoinPilot TR · Teknik Radar</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/pro.css') }}">
-  <style>.detail-frame p{white-space:pre-line}.frame.clickable,.market-row.clickable{cursor:pointer}.frame.clickable:hover,.frame.clickable:focus{outline:1px solid #70a1ff;background:#173252}.market-search{margin-bottom:14px}.market-search p{font-size:12px;line-height:1.55}.search-line{display:flex;gap:9px;align-items:center}.search-line input{margin:0}.search-line button{white-space:nowrap}.market-analysis{margin-bottom:14px}.market-row.clickable:hover{color:#fff;background:#132845;padding-left:8px;padding-right:8px;border-radius:8px}@media(max-width:670px){.search-line{align-items:stretch;flex-direction:column}.search-line button{width:100%}}</style>
+  <style>.detail-frame p{white-space:pre-line}.frame.clickable,.market-row.clickable{cursor:pointer}.frame.clickable:hover,.frame.clickable:focus{outline:1px solid #70a1ff;background:#173252}.market-search{margin-bottom:14px}.market-search p{font-size:12px;line-height:1.55}.search-line{display:flex;gap:9px;align-items:center}.search-line input{margin:0}.search-line button{white-space:nowrap}.market-analysis{margin-bottom:14px}.market-row.clickable:hover{color:#fff;background:#132845;padding-left:8px;padding-right:8px;border-radius:8px}.timeframe-picker{margin:14px 0}.timeframe-options{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}.timeframe-options label{position:relative;cursor:pointer}.timeframe-options input{position:absolute;opacity:0;pointer-events:none}.timeframe-options span{display:block;padding:8px 11px;border:1px solid #385675;border-radius:9px;color:#b6c9e2;font-size:12px;font-weight:800}.timeframe-options input:checked+span{border-color:#70a1ff;background:#173252;color:#fff;box-shadow:inset 0 0 0 1px #70a1ff}.timeframe-actions{display:flex;align-items:center;justify-content:space-between;gap:12px}.timeframe-actions span{font-size:12px}@media(max-width:670px){.search-line{align-items:stretch;flex-direction:column}.search-line button{width:100%}.timeframe-actions{align-items:stretch;flex-direction:column}.timeframe-actions button{width:100%}}</style>
   <script defer src="{{ url_for('static', filename='js/pro.js') }}"></script>
 </head>
 <body>
@@ -52,6 +52,17 @@
           <b>Çoklu zaman dilimi taraması</b>
           <span>Günlük, 4 Saat, 1 Saat ve 15 Dakika: EMA200 üstü; RSI(10) 50 üstünde ve yukarı ivmeli; MACD sıfır üstü/sıfıra yakın ve mavi çizgi kırmızının üstünde; Fisher(30) sıfır üstü/sıfıra yakın ve yukarı yönlü olmalı. Son kapanan mumda ortalama üstü hacim aranır. 15 dakika giriş zamanlaması doğrulamasıdır.</span>
         </div>
+        <section class="panel timeframe-picker">
+          <div><small>ZAMAN DİLİMİ FİLTRESİ</small><h2>Hangi periyotlar zorunlu olsun?</h2></div>
+          <div class="timeframe-options" id="timeframe-controls">
+            <label><input type="checkbox" value="daily" checked><span>Günlük</span></label>
+            <label><input type="checkbox" value="four_hour" checked><span>4 Saat</span></label>
+            <label><input type="checkbox" value="one_hour" checked><span>1 Saat</span></label>
+            <label><input type="checkbox" value="fifteen_minute" checked><span>15 Dakika</span></label>
+            <label><input type="checkbox" value="five_minute"><span>5 Dakika</span></label>
+          </div>
+          <div class="timeframe-actions"><span id="timeframe-summary" class="muted">Seçilen tüm periyotlarda 5/5 teyit aranır.</span><button id="apply-timeframes" type="button">FİLTREYİ UYGULA</button></div>
+        </section>
         <section class="section-head radar-positions-head"><div><small>AÇIK POZİSYONLAR · RADAR</small><h2>İşlemlerim</h2></div><button class="link" data-goto="positions">Portföye git</button></section>
         <div class="positions top-positions" id="radar-positions"></div>
         <div class="section-head"><div><small>CANLI TEKNİK RADAR</small><h2>Kurallı işlem adayları</h2></div><span class="muted" id="radar-time">—</span></div>

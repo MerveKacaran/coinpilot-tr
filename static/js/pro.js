@@ -4,12 +4,35 @@ const moneyFormat = new Intl.NumberFormat('tr-TR', {
 });
 const positionKey = 'coinpilot-pro-positions';
 const historyKey = 'coinpilot-pro-history';
+const timeframeKey = 'coinpilot-pro-timeframes';
+const frameCatalog = [
+  ['daily', 'Günlük'],
+  ['four_hour', '4 Saat'],
+  ['one_hour', '1 Saat'],
+  ['fifteen_minute', '15 Dakika'],
+  ['five_minute', '5 Dakika'],
+];
+const defaultFrames = frameCatalog.slice(0, 4).map(item => item[0]);
+
+function savedFrames() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(timeframeKey) || 'null');
+    const allowed = Array.isArray(stored)
+      ? frameCatalog.map(item => item[0]).filter(key => stored.includes(key))
+      : [];
+    return allowed.length ? allowed : defaultFrames;
+  } catch (_) {
+    return defaultFrames;
+  }
+}
+
 const state = {
   prices: {},
   gainers: [],
   losers: [],
   signals: [],
   marketAnalysis: null,
+  activeFrames: savedFrames(),
   selected: null,
   positions: JSON.parse(localStorage.getItem(positionKey) || '[]'),
   history: JSON.parse(localStorage.getItem(historyKey) || '[]'),
@@ -51,6 +74,45 @@ function currentPrice(position) {
 function savePortfolio() {
   localStorage.setItem(positionKey, JSON.stringify(state.positions));
   localStorage.setItem(historyKey, JSON.stringify(state.history));
+}
+
+function frameEntries(signal) {
+  const keys = Array.isArray(signal.frame_keys) && signal.frame_keys.length
+    ? signal.frame_keys
+    : defaultFrames;
+  return keys
+    .filter(key => signal.frames && signal.frames[key])
+    .map(key => [frameCatalog.find(item => item[0] === key)?.[1] || key, signal.frames[key]]);
+}
+
+function updateTimeframeSummary(message) {
+  const names = state.activeFrames
+    .map(key => frameCatalog.find(item => item[0] === key)?.[1])
+    .filter(Boolean);
+  byId('timeframe-summary').textContent = message || (names.join(' · ') + ' seçili. Listede yalnızca seçilen tüm periyotlarda 5/5 olanlar görünür.');
+}
+
+function syncTimeframeControls() {
+  document.querySelectorAll('#timeframe-controls input').forEach(input => {
+    input.checked = state.activeFrames.includes(input.value);
+  });
+  updateTimeframeSummary();
+}
+
+function applyTimeframeSelection() {
+  const frames = Array.from(document.querySelectorAll('#timeframe-controls input:checked'))
+    .map(input => input.value);
+  if (!frames.length) {
+    updateTimeframeSummary('En az bir zaman dilimi seçmelisin.');
+    return;
+  }
+  state.activeFrames = frameCatalog.map(item => item[0]).filter(key => frames.includes(key));
+  localStorage.setItem(timeframeKey, JSON.stringify(state.activeFrames));
+  state.signals = [];
+  state.marketAnalysis = null;
+  renderMarketAnalysis();
+  syncTimeframeControls();
+  loadRadar(true);
 }
 
 function setLive(online, text) {
@@ -227,7 +289,7 @@ async function analyzeMarketSymbol(value) {
   byId('market-analysis').replaceChildren(create('div', 'panel empty', symbol + ' için Günlük, 4 Saat, 1 Saat ve 15 Dakika analizi hazırlanıyor…'));
   message.textContent = 'Canlı mum verisi ve risk hesabı alınıyor…';
   try {
-    const response = await fetch('/api/analyze?symbol=' + encodeURIComponent(symbol));
+    const response = await fetch('/api/analyze?symbol=' + encodeURIComponent(symbol) + '&frames=' + encodeURIComponent(state.activeFrames.join(',')));
     const data = await response.json();
     if (!response.ok || data.status !== 'success') throw new Error(data.message || 'analysis');
     state.marketAnalysis = data.item;
@@ -246,7 +308,11 @@ function renderRadar() {
   const grid = byId('radar-grid');
   grid.replaceChildren();
   if (!state.signals.length) {
-    grid.append(create('div', 'panel empty', 'Tarama sonucu hazırlanıyor. Bu ilk tarama biraz sürebilir.'));
+    const names = state.activeFrames
+      .map(key => frameCatalog.find(item => item[0] === key)?.[1])
+      .filter(Boolean)
+      .join(' · ');
+    grid.append(create('div', 'panel empty', names + ' seçimine göre 5/5 teknik teyit alan coin bulunamadı. Başka bir periyot kombinasyonu deneyebilirsin.'));
     return;
   }
   state.signals.forEach(signal => grid.append(signalCard(signal)));
@@ -305,12 +371,7 @@ function signalCard(signal) {
   radar.className = 'radar-canvas';
   content.append(radar);
   const checks = create('div', 'frame-list');
-  const frameList = [
-    ['Günlük', signal.frames.daily],
-    ['4 Saat', signal.frames.four_hour],
-    ['1 Saat', signal.frames.one_hour],
-    ['15 Dakika', signal.frames.fifteen_minute],
-  ];
+  const frameList = frameEntries(signal);
   frameList.forEach(item => {
     const frame = create('div', 'frame clickable ' + (item[1].core_pass ? 'ok' : ''));
     frame.append(create('b', '', item[0]));
@@ -373,18 +434,13 @@ function showDetail(signal) {
   const heading = create('div');
   heading.append(create('small', '', 'DETAYLI TEKNİK ANALİZ'));
   heading.append(create('h2', '', signal.coin.symbol + ' · ' + signal.action));
-  heading.append(create('p', 'muted', '1 saatlik grafik ve dört zaman dilimi kontrolü'));
+  heading.append(create('p', 'muted', '1 saatlik grafik ve ' + frameEntries(signal).length + ' seçili zaman dilimi kontrolü'));
   box.append(heading);
   const chart = document.createElement('canvas');
   chart.className = 'detail-chart';
   box.append(chart);
   const frames = create('div', 'detail-grid');
-  [
-    ['Günlük', signal.frames.daily],
-    ['4 Saat', signal.frames.four_hour],
-    ['1 Saat', signal.frames.one_hour],
-    ['15 Dakika · giriş zamanlaması', signal.frames.fifteen_minute],
-  ]
+  frameEntries(signal)
     .forEach(item => frames.append(detailFrame(item[0], item[1])));
   box.append(frames);
   const levels = create('div', 'detail-levels');
@@ -430,7 +486,7 @@ function showFrameDetail(signal, name, frame) {
   box.append(create('h2', '', signal.coin.symbol + ' · ' + name));
   box.append(create('p', 'muted', 'Karttaki ' + frame.checks_passed + '/5 alanına tıkladın. Her kural aşağıda tek tek açıklanır.'));
   box.append(detailFrame(name, frame));
-  box.append(create('p', 'muted', '✓ = koşul sağlandı · ✕ = bu zaman diliminde teyit bekleniyor. 15 dakika, yalnızca giriş zamanlamasını güçlendirir; ana trend için Günlük, 4 Saat ve 1 Saat birlikte değerlendirilir.'));
+  box.append(create('p', 'muted', '✓ = koşul sağlandı · ✕ = bu zaman diliminde teyit bekleniyor. Bu taramada yalnızca senin seçtiğin zaman dilimleri zorunludur.'));
   dialog.showModal();
 }
 
@@ -586,7 +642,9 @@ async function loadRadar(force) {
   }
   byId('scan-button').disabled = true;
   try {
-    const response = await fetch('/api/radar' + (force ? '?force=1' : ''));
+    const params = new URLSearchParams({ frames: state.activeFrames.join(',') });
+    if (force) params.set('force', '1');
+    const response = await fetch('/api/radar?' + params.toString());
     const data = await response.json();
     state.signals = data.items || [];
     byId('radar-time').textContent = new Date(data.updated_at).toLocaleTimeString('tr-TR');
@@ -604,6 +662,11 @@ document.querySelectorAll('[data-goto]').forEach(node => node.addEventListener('
 document.querySelectorAll('[data-close]').forEach(node => node.addEventListener('click', () => byId(node.dataset.close).close()));
 byId('menu-toggle').addEventListener('click', () => byId('sidebar').classList.toggle('open'));
 byId('scan-button').addEventListener('click', () => loadRadar(true));
+byId('apply-timeframes').addEventListener('click', applyTimeframeSelection);
+document.querySelectorAll('#timeframe-controls input').forEach(input => input.addEventListener('change', () => {
+  const count = document.querySelectorAll('#timeframe-controls input:checked').length;
+  updateTimeframeSummary(count ? 'Seçim hazır. FİLTREYİ UYGULA düğmesine bas.' : 'En az bir zaman dilimi seçmelisin.');
+}));
 byId('market-search-button').addEventListener('click', () => analyzeMarketSymbol(byId('market-search-input').value));
 byId('market-search-input').addEventListener('keydown', event => {
   if (event.key === 'Enter') {
@@ -634,6 +697,7 @@ byId('trade-form').addEventListener('submit', event => {
 setInterval(() => {
   byId('clock').textContent = new Date().toLocaleTimeString('tr-TR');
 }, 1000);
+syncTimeframeControls();
 loadDashboard();
 loadRadar(false);
 setInterval(loadDashboard, 8000);
