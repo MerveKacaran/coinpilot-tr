@@ -9,3 +9,4 @@ coinpilot_mobile/
 build/
 .gradle/
 *.apk
+test-output/

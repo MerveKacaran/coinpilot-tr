@@ -2,108 +2,70 @@
 <html lang="tr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>CoinPilot TR · Teknik Radar</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/pro.css') }}">
-  <style>.detail-frame p{white-space:pre-line}.frame.clickable,.market-row.clickable{cursor:pointer}.frame.clickable:hover,.frame.clickable:focus{outline:1px solid #70a1ff;background:#173252}.market-search{margin-bottom:14px}.market-search p{font-size:12px;line-height:1.55}.search-line{display:flex;gap:9px;align-items:center}.search-line input{margin:0}.search-line button{white-space:nowrap}.market-analysis{margin-bottom:14px}.market-row.clickable:hover{color:#fff;background:#132845;padding-left:8px;padding-right:8px;border-radius:8px}.timeframe-picker{margin:14px 0}.timeframe-options{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}.timeframe-options label{position:relative;cursor:pointer}.timeframe-options input{position:absolute;opacity:0;pointer-events:none}.timeframe-options span{display:block;padding:8px 11px;border:1px solid #385675;border-radius:9px;color:#b6c9e2;font-size:12px;font-weight:800}.timeframe-options input:checked+span{border-color:#70a1ff;background:#173252;color:#fff;box-shadow:inset 0 0 0 1px #70a1ff}.timeframe-actions{display:flex;align-items:center;justify-content:space-between;gap:12px}.timeframe-actions span{font-size:12px}@media(max-width:670px){.search-line{align-items:stretch;flex-direction:column}.search-line button{width:100%}.timeframe-actions{align-items:stretch;flex-direction:column}.timeframe-actions button{width:100%}}</style>
-  <script defer src="{{ url_for('static', filename='js/pro.js') }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/pro.css') }}?v={{ version }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/upgrade.css') }}?v={{ version }}">
+  <script defer src="{{ url_for('static', filename='js/pro.js') }}?v={{ version }}"></script>
 </head>
 <body>
   <aside class="sidebar" id="sidebar">
-    <div class="brand">◈ CoinPilot <i>TR</i></div>
-    <p>Canlı teknik analiz asistanı</p>
-    <nav>
+    <div class="brand">◈ CoinPilot <i>TR</i></div><p>Teknik analiz ve sanal portföy</p>
+    <nav aria-label="Ana menü">
       <button class="nav active" data-page="home">⌂ <span>Ana Sayfa</span></button>
       <button class="nav" data-page="radar">◉ <span>Teknik Radar</span></button>
       <button class="nav" data-page="positions">▣ <span>Pozisyonlarım</span></button>
       <button class="nav" data-page="market">↗ <span>Piyasa Hareketi</span></button>
     </nav>
-    <div class="sidebar-foot">
-      Günlük · 4 Saat · 1 Saat · 15 Dakika<br>
-      RSI(10) · Fisher(30) · MACD · EMA200<br>
-      Hacim · Fibonacci · Trend kırılımı
-    </div>
+    <div class="sidebar-foot">Fiyatlar ayrı, sinyaller kapanmış mumlarla güncellenir.<br>3/5 aday · 5/5 teyit<br>Gerçek borsa emri gönderilmez.</div>
   </aside>
   <section class="shell">
     <header>
-      <button id="menu-toggle" class="icon mobile-only">☰</button>
-      <div>
-        <small id="page-label">ANA SAYFA</small>
-        <h1 id="title">Bugün ne yapmalıyım?</h1>
-      </div>
-      <div class="live"><span id="live-dot"></span><b id="live-status">Bağlanıyor</b><time id="clock">--:--:--</time><button id="scan-button">Taramayı yenile</button></div>
+      <button id="menu-toggle" class="icon mobile-only" aria-label="Menüyü aç">☰</button>
+      <div><small id="page-label">ANA SAYFA</small><h1 id="title">Bugün ne yapmalıyım?</h1></div>
+      <div class="live"><span id="live-dot"></span><b id="live-status">Bağlanıyor</b><button id="scan-button">Taramayı yenile</button></div>
     </header>
     <main>
+      <div id="notice" class="callout hidden" role="status" aria-live="polite"></div>
       <section class="page active" id="page-home">
         <div class="stats">
-          <article><small>Portföy değeri</small><b id="portfolio-value">₺0</b></article>
-          <article><small>Toplam kâr / zarar</small><b id="portfolio-profit">₺0</b><em id="portfolio-percent">+0,00%</em></article>
+          <article><small>Açık pozisyon değeri</small><b id="portfolio-value">—</b></article>
+          <article><small>Açık işlemler net K/Z</small><b id="portfolio-profit">—</b><em id="portfolio-percent">—</em></article>
           <article><small>Açık işlem</small><b id="position-count">0</b></article>
-          <article><small>Kurala uygun radar</small><b id="setup-count">0</b></article>
+          <article><small>Radar adayları</small><b id="setup-count">0</b></article>
         </div>
-        <section class="section-head"><div><small>AÇIK POZİSYONLAR</small><h2>İşlemlerim</h2></div><button class="link" data-goto="positions">Tümünü gör</button></section>
-        <div class="positions top-positions" id="home-positions"></div>
-        <section class="section-head"><div><small>RADAR ÖZETİ</small><h2>Öne çıkan teknik sinyaller</h2></div><button class="link" data-goto="radar">Radarı aç</button></section>
+        <section class="section-head"><div><small>ÖNCE POZİSYONLARIN</small><h2>İşlemlerim</h2></div><button class="link" data-goto="positions">Tümünü gör</button></section>
+        <div class="positions" id="home-positions"></div>
+        <section class="section-head"><div><small>TEKNİK DURUM</small><h2>Radar özeti</h2></div><button class="link" data-goto="radar">Radara git</button></section>
         <div id="home-radar" class="compact-radar"></div>
       </section>
-
       <section class="page" id="page-radar">
-        <div class="callout">
-          <b>Çoklu zaman dilimi taraması</b>
-          <span>Günlük, 4 Saat, 1 Saat ve 15 Dakika: EMA200 üstü; RSI(10) 50 üstünde ve yukarı ivmeli; MACD sıfır üstü/sıfıra yakın ve mavi çizgi kırmızının üstünde; Fisher(30) sıfır üstü/sıfıra yakın ve yukarı yönlü olmalı. Son kapanan mumda ortalama üstü hacim aranır. 15 dakika giriş zamanlaması doğrulamasıdır.</span>
-        </div>
+        <div class="callout"><b>Koşul puanı, kazanma olasılığı değildir</b><span>Seçilen periyotlardan en az birinde 3/5 sağlayanlar listelenir. İşlem için seçili tüm periyotlarda 5/5, güncel fiyat ve en fazla %8 stop mesafesi aranır.</span></div>
         <section class="panel timeframe-picker">
-          <div><small>ZAMAN DİLİMİ FİLTRESİ</small><h2>Hangi periyotlar zorunlu olsun?</h2></div>
-          <div class="timeframe-options" id="timeframe-controls">
-            <label><input type="checkbox" value="daily" checked><span>Günlük</span></label>
-            <label><input type="checkbox" value="four_hour" checked><span>4 Saat</span></label>
-            <label><input type="checkbox" value="one_hour" checked><span>1 Saat</span></label>
-            <label><input type="checkbox" value="fifteen_minute" checked><span>15 Dakika</span></label>
-            <label><input type="checkbox" value="five_minute"><span>5 Dakika</span></label>
-          </div>
-          <div class="timeframe-actions"><span id="timeframe-summary" class="muted">Seçilen periyotlardan en az birinde 3/5 teyit aranır.</span><button id="apply-timeframes" type="button">FİLTREYİ UYGULA</button></div>
+          <small>TARAMA AYARLARI</small><h2>Periyotlarını seç</h2>
+          <div id="timeframe-controls" class="timeframe-options"></div>
+          <div class="controls-row"><label>Tarama kapsamı<select id="scan-limit"><option value="8">Hacme göre ilk 8</option><option value="25" selected>Hacme göre ilk 25</option><option value="50">Hacme göre ilk 50</option><option value="250">Tüm TRY pariteleri</option><option value="favorites">Takip listem</option></select></label><button id="apply-timeframes">FİLTREYİ UYGULA</button></div>
+          <p id="timeframe-summary" class="muted"></p><p id="radar-time" class="muted"></p><div id="scan-errors" class="muted"></div>
         </section>
-        <section class="section-head radar-positions-head"><div><small>AÇIK POZİSYONLAR · RADAR</small><h2>İşlemlerim</h2></div><button class="link" data-goto="positions">Portföye git</button></section>
-        <div class="positions top-positions" id="radar-positions"></div>
-        <div class="section-head"><div><small>CANLI TEKNİK RADAR</small><h2>Kurallı işlem adayları</h2></div><span class="muted" id="radar-time">—</span></div>
-        <div id="radar-grid" class="radar-grid"></div>
+        <section class="section-head"><div><small>AÇIK POZİSYONLAR</small><h2>İşlemlerim</h2></div></section><div id="radar-positions" class="positions"></div>
+        <section class="section-head"><div><small>EN AZ 3/5</small><h2>Kurallı işlem adayları</h2></div></section><div id="radar-grid" class="radar-grid"></div>
       </section>
-
-      <section class="page" id="page-positions">
-        <section class="section-head"><div><small>SANAL PORTFÖY</small><h2>Pozisyonlarım</h2></div></section>
-        <div id="position-page-list" class="positions"></div>
-        <section class="section-head history-title"><div><small>GÜNLÜK İŞLEM DÖKÜMÜ</small><h2>İşlem geçmişi</h2></div></section>
-        <div class="table-wrap"><table><thead><tr><th>Tarih</th><th>Coin</th><th>Giriş</th><th>Satış</th><th>Sonuç</th></tr></thead><tbody id="history"></tbody></table></div>
-      </section>
-
       <section class="page" id="page-market">
-        <section class="panel market-search">
-          <small>TEK COIN ANALİZİ</small>
-          <h2>İstediğin BtcTurk coinini incele</h2>
-          <p class="muted">Örnek: <b>WIF/TRY</b>. Aşağıdaki yükselen veya düşen coinlerden birine de doğrudan tıklayabilirsin.</p>
-          <div class="search-line"><input id="market-search-input" list="market-symbols" placeholder="WIF/TRY yaz…" autocomplete="off"><datalist id="market-symbols"></datalist><button id="market-search-button" type="button">ANALİZ ET</button></div>
-          <p id="market-search-message" class="muted"></p>
-        </section>
-        <div id="market-analysis" class="market-analysis"></div>
-        <div class="market-columns">
-          <section class="panel"><small class="positive">YÜKSELENLER</small><h2>En çok yükselen 5 coin</h2><div id="gainers"></div></section>
-          <section class="panel"><small class="negative">DÜŞENLER</small><h2>En çok düşen 5 coin</h2><div id="losers"></div></section>
-        </div>
+        <div class="market-columns"><section class="panel"><small class="positive">YÜKSELENLER</small><h2>En çok yükselen 5</h2><div id="gainers"></div></section><section class="panel"><small class="negative">DÜŞENLER</small><h2>En çok düşen 5</h2><div id="losers"></div></section></div>
+        <section class="panel market-search"><small>TEK COIN ANALİZİ</small><h2>İstediğin coini incele</h2><label for="market-search-input">Coin / TRY</label><div class="search-line"><input id="market-search-input" list="market-symbols" placeholder="WIF/TRY veya WIF" autocomplete="off"><datalist id="market-symbols"></datalist><button id="market-search-button">ANALİZ ET</button></div><p id="market-frames" class="muted"></p><button class="link" data-goto="radar">Periyotları değiştir</button><p id="market-search-message" role="status"></p><div id="favorites" class="favorites"></div></section>
+        <div id="market-analysis"></div>
       </section>
+      <section class="page" id="page-positions">
+        <section class="section-head"><div><small>SANAL PORTFÖY</small><h2>Pozisyonlarım</h2></div></section><div id="position-page-list" class="positions"></div>
+        <section class="panel backup-panel"><h2>Portföy yedeği</h2><p>Bu tarayıcıda saklanır. Başka cihazda aynı kayıtları görmek için yedeği aktar. İçe aktarma mevcut kayıtları silmez; kimliğe göre birleştirir.</p><button id="export-backup">YEDEĞİ İNDİR</button><label class="file-label">YEDEK YÜKLE<input type="file" id="import-backup" accept="application/json,.json"></label><p id="backup-message" role="status"></p></section>
+        <section class="section-head"><div><small>GERÇEKLEŞEN SANAL İŞLEMLER</small><h2>İşlem geçmişi</h2></div><b id="realized-profit"></b></section>
+        <div class="table-wrap"><table><thead><tr><th>Tarih</th><th>Coin</th><th>Giriş</th><th>Satış</th><th>Net K/Z</th></tr></thead><tbody id="history"></tbody></table></div>
+      </section>
+      <section class="panel alerts-panel"><div class="section-head"><div><small>UYGULAMA İÇİ ALARMLAR</small><h2>Son değişiklikler</h2></div><label class="toggle"><input type="checkbox" id="alerts-enabled" checked> Açık</label></div><p class="muted">Sayfa açık ve bağlıyken stop/hedef yaklaşımı ve taramadaki teyit değişimleri izlenir. Otomatik satış yapılmaz.</p><div id="alerts-list" aria-live="polite"></div></section>
     </main>
-    <footer>CoinPilot TR · Version 4.0.0 · Developed by <b>Merve Kaçaranlıoğlu Topçu</b> · Teknik sinyaller yatırım tavsiyesi değildir.</footer>
+    <footer>CoinPilot TR · Sürüm {{ version }} · Developed by <b>Merve Kaçaranlıoğlu Topçu</b><br>Teknik sinyaller yatırım tavsiyesi değildir.</footer>
   </section>
-
-  <dialog id="detail-dialog"><button class="close" data-close="detail-dialog">×</button><div id="detail-content"></div></dialog>
-  <dialog id="trade-dialog">
-    <button class="close" data-close="trade-dialog">×</button>
-    <form id="trade-form" method="dialog">
-      <small>SANAL İŞLEM</small><h2 id="trade-title">İşlem aç</h2><p id="trade-entry">—</p>
-      <label>Kaç TL yatırıyorsun?<input id="trade-amount" type="number" min="1" step="1" required></label>
-      <div class="auto-levels"><div><small>Otomatik hedef</small><b id="trade-target">—</b></div><div><small>Koruyucu stop</small><b id="trade-stop">—</b></div></div>
-      <p class="muted">Hedef ve stop; Fibonacci, destek/direnç ve son swing seviyelerine göre otomatik hesaplanır.</p>
-      <button class="wide" type="submit">İŞLEMİ AÇ</button>
-    </form>
-  </dialog>
+  <dialog id="detail-dialog"><button class="close" data-close="detail-dialog" aria-label="Kapat">×</button><div id="detail-content"></div></dialog>
+  <dialog id="trade-dialog"><button class="close" data-close="trade-dialog" aria-label="Kapat">×</button><form id="trade-form"><small>SANAL İŞLEM</small><h2 id="trade-title"></h2><p id="trade-entry"></p><label>Tutar (TL)<input id="trade-amount" type="number" min="1" step=".01" required></label><div class="controls-row"><label>Komisyon / yön (%)<input id="trade-fee" type="number" min="0" max="5" step=".01" value="0.10" required></label><label>Tahmini kayma / yön (%)<input id="trade-slip" type="number" min="0" max="5" step=".01" value="0.10" required></label></div><p class="muted">Maliyetler örnek varsayımdır; kendi oranlarınla değiştir. Varsa borsa alış/satış kotasyonu kullanılır.</p><div class="auto-levels"><div><small>İlk hedef</small><b id="trade-target"></b></div><div><small>Stop</small><b id="trade-stop"></b></div></div><p id="trade-risk"></p><p id="trade-message" role="status"></p><button id="trade-submit" class="wide" type="submit">GÜNCEL FİYATLA İŞLEMİ AÇ</button></form></dialog>
 </body>
 </html>

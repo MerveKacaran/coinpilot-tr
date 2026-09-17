@@ -1,0 +1,57 @@
+import time
+import unittest
+from unittest.mock import patch
+import coinpilot_web as web
+from tests.test_engine import candles
+
+
+class ApiTests(unittest.TestCase):
+    def setUp(self):
+        self.client=web.app.test_client()
+        self.coin=dict(symbol='TEST/TRY',pair='TESTTRY',price=106,change=2,price_source='REST',price_updated_at=web.iso(),volume_try=1000)
+
+    def test_template_and_version(self):
+        response=self.client.get('/')
+        self.assertEqual(response.status_code,200)
+        self.assertIn(b'4.1.0',response.data)
+
+    def test_each_single_frame(self):
+        for key in web.FRAME_SPECS:
+            with patch.object(web,'get_coin',return_value=self.coin),patch.object(web,'get_candles',return_value=candles()):
+                r=self.client.get('/api/analyze?symbol=TESTTRY&frames='+key)
+                self.assertEqual(r.status_code,200)
+                data=r.get_json()['item'];self.assertEqual(list(data['frames']),[key])
+                self.assertIn('chart',data['frames'][key]);self.assertNotIn('highs',data['frames'][key])
+                self.assertEqual(r.headers['Cache-Control'],'no-store')
+
+    def test_invalid_frames_rejected(self):
+        self.assertEqual(self.client.get('/api/analyze?symbol=TESTTRY&frames=wrong').status_code,400)
+        self.assertEqual(self.client.get('/api/analyze?symbol=TESTTRY&frames=').status_code,400)
+
+    def test_quote_forces_refresh(self):
+        with patch.object(web,'get_coin',return_value=self.coin) as get:
+            self.assertEqual(self.client.get('/api/quote?symbol=TESTTRY').status_code,200)
+            get.assert_called_once_with('TEST/TRY',True)
+
+    def test_dashboard_per_symbol_timestamps(self):
+        with patch.object(web,'current_markets',return_value=[self.coin]):
+            data=self.client.get('/api/dashboard').get_json()
+            self.assertEqual(data['quotes']['TEST/TRY']['price_updated_at'],self.coin['price_updated_at'])
+
+    def test_radar_background_progress_and_coverage(self):
+        web.radar_cache.clear()
+        with patch.object(web,'current_markets',return_value=[self.coin]),patch.object(web,'get_candles',return_value=candles()):
+            self.assertEqual(self.client.get('/api/radar?frames=five_minute').status_code,200)
+            deadline=time.monotonic()+3
+            while time.monotonic()<deadline:
+                data=self.client.get('/api/radar?frames=five_minute').get_json()
+                if not data['scanning']:break
+                time.sleep(.02)
+            self.assertFalse(data['scanning']);self.assertEqual(data['scanned'],1)
+            self.assertEqual(data['total'],1);self.assertEqual(data['errors'],[])
+
+    def test_invalid_backtest_costs(self):
+        self.assertEqual(self.client.get('/api/backtest?symbol=TESTTRY&fee=NaN').status_code,400)
+
+
+if __name__=='__main__':unittest.main()
