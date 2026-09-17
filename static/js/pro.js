@@ -73,7 +73,7 @@ function renderDashboard() {
   byId('portfolio-percent').className = gain >= 0 ? 'positive' : 'negative';
   byId('position-count').textContent = String(state.positions.length);
   byId('setup-count').textContent = String(
-    state.signals.filter(signal => signal.passed_frames === 3).length,
+    state.signals.filter(signal => signal.all_frames_passed).length,
   );
   renderPositions();
   renderCompactRadar();
@@ -81,7 +81,11 @@ function renderDashboard() {
 }
 
 function renderPositions() {
-  const targets = [byId('home-positions'), byId('position-page-list')];
+  const targets = [
+    byId('home-positions'),
+    byId('radar-positions'),
+    byId('position-page-list'),
+  ];
   targets.forEach(target => {
     target.replaceChildren();
     if (!state.positions.length) {
@@ -126,7 +130,10 @@ function positionCard(position) {
   top.append(create('b', result >= 0 ? 'positive' : 'negative', percent(result)));
   card.append(top);
   card.append(create('b', 'value ' + (result >= 0 ? 'positive' : 'negative'), money(currentValue)));
-  card.append(create('div', 'levels', 'Hedef: ' + money(position.target) + ' · Stop: ' + money(position.stop)));
+  const extended = position.extendedTarget
+    ? ' · Uzatılmış hedef: ' + money(position.extendedTarget)
+    : '';
+  card.append(create('div', 'levels', 'İlk satış hedefi: ' + money(position.target) + extended + ' · Stop: ' + money(position.stop)));
   const bar = create('div', 'bar');
   const fill = create('i');
   fill.style.width = progress.toFixed(0) + '%';
@@ -182,6 +189,28 @@ function renderRadar() {
   state.signals.forEach(signal => grid.append(signalCard(signal)));
 }
 
+function frameSummary(frame) {
+  const macd = frame.macd_cross_up
+    ? 'yukarı kesişim'
+    : frame.macd_above_zero
+      ? 'sıfır üstü'
+      : frame.macd_cross_down
+        ? 'aşağı kesişim'
+        : 'bekliyor';
+  const fisher = frame.fisher_cross_up
+    ? 'yukarı kesti'
+    : frame.fisher_rising
+      ? 'yukarı yönlü'
+      : 'yön bekliyor';
+  return [
+    'RSI(10) ' + Number(frame.rsi).toFixed(1) + (frame.rsi > 50 ? ' ✓' : ' ✕'),
+    'Fisher(30) ' + Number(frame.fisher).toFixed(2) + ' · ' + fisher + (frame.fisher_condition ? ' ✓' : ' ✕'),
+    'MACD ' + macd + (frame.macd_condition ? ' ✓' : ' ✕'),
+    'EMA200 ' + (frame.above_ema200 ? 'üstünde ✓' : 'altında ✕'),
+    'Hacim x' + Number(frame.volume_ratio).toFixed(2) + (frame.above_average_volume ? ' ✓' : ' ✕'),
+  ].join('\n');
+}
+
 function signalCard(signal) {
   const kind = signalKind(signal);
   const card = create('article', 'signal');
@@ -202,17 +231,18 @@ function signalCard(signal) {
     ['Günlük', signal.frames.daily],
     ['4 Saat', signal.frames.four_hour],
     ['1 Saat', signal.frames.one_hour],
+    ['15 Dakika', signal.frames.fifteen_minute],
   ];
   frameList.forEach(item => {
     const frame = create('div', 'frame ' + (item[1].core_pass ? 'ok' : ''));
     frame.append(create('b', '', item[0]));
-    frame.append(create('span', 'tag', item[1].core_pass ? 'UYGUN' : 'BEKLE'));
+    frame.append(create('span', 'tag', item[1].checks_passed + '/5 ' + (item[1].core_pass ? 'UYGUN' : 'BEKLE')));
     checks.append(frame);
   });
   const note = create('div', 'fib-note ' + (signal.in_fib_zone ? 'good' : ''));
   note.textContent = signal.in_fib_zone
-    ? 'Fib 0.618–0.786 kritik bölgede'
-    : 'Fib 0.618–0.786 geri çekilme bölgesi bekleniyor';
+    ? 'Fib 0.618–0.786 geri çekilme bölgesinde · İlk satış: ' + money(signal.target)
+    : 'Fib 0.618–0.786 retest bölgesi: ' + money(signal.fib['786']) + ' – ' + money(signal.fib['618']);
   checks.append(note);
   content.append(checks);
   card.append(content);
@@ -221,7 +251,12 @@ function signalCard(signal) {
   card.append(line);
 
   const metrics = create('div', 'signal-metrics');
-  [['Puan', signal.score + '/100'], ['Hedef', percent(signal.target_pct)], ['Stop', '-' + Number(signal.stop_pct).toFixed(1) + '%']]
+  [
+    ['Puan', signal.score + '/100'],
+    ['İlk satış', percent(signal.target_pct)],
+    ['Stop', '-' + Number(signal.stop_pct).toFixed(1) + '%'],
+    ['1s hacim', 'x' + Number(signal.frames.one_hour.volume_ratio).toFixed(2)],
+  ]
     .forEach(item => {
       const metric = create('div');
       metric.append(create('span', '', item[0]));
@@ -256,7 +291,12 @@ function showDetail(signal) {
   chart.className = 'detail-chart';
   box.append(chart);
   const frames = create('div', 'detail-grid');
-  [['Günlük', signal.frames.daily], ['4 Saat', signal.frames.four_hour], ['1 Saat', signal.frames.one_hour]]
+  [
+    ['Günlük', signal.frames.daily],
+    ['4 Saat', signal.frames.four_hour],
+    ['1 Saat', signal.frames.one_hour],
+    ['15 Dakika · giriş zamanlaması', signal.frames.fifteen_minute],
+  ]
     .forEach(item => frames.append(detailFrame(item[0], item[1])));
   box.append(frames);
   const levels = create('div', 'detail-levels');
@@ -265,7 +305,8 @@ function showDetail(signal) {
     ['Fib 0.786', money(signal.fib['786'])],
     ['Destek', money(signal.fib.support)],
     ['Direnç', money(signal.fib.resistance)],
-    ['Otomatik hedef', money(signal.target)],
+    ['İlk satış hedefi', money(signal.target)],
+    ['Fib 1.272 uzatılmış hedef', money(signal.extended_target)],
     ['Koruyucu stop', money(signal.stop)],
   ].forEach(item => {
     const level = create('div');
@@ -274,7 +315,7 @@ function showDetail(signal) {
     levels.append(level);
   });
   box.append(levels);
-  const rule = create('p', 'muted', 'SAT kuralı: Fisher(30) 0 altına iner ve MACD aşağı keserse sat uyarısı oluşur. AL için tüm zaman dilimlerinde kuralların sağlanması aranır.');
+  const rule = create('p', 'muted', 'Kontrol listesi: RSI(10) > 50 · Fisher(30) sıfır üstü ve yukarı yönlü · MACD yukarı kesişim veya sıfır üstü · fiyat EMA200 üstü · son kapanan mumda ortalama üstü hacim. SAT kuralı: Fisher(30) sıfır altına iner ve MACD aşağı keser. Fib 0.618–0.786 retest bölgesidir; satış planı direnç ve Fib 1.272 uzatmasına göre verilir.');
   box.append(rule);
   const open = button(signal.sell_setup ? 'SAT UYARISI AKTİF' : 'SANAL İŞLEM AÇ', 'wide', () => {
     dialog.close();
@@ -288,11 +329,8 @@ function showDetail(signal) {
 
 function detailFrame(name, frame) {
   const card = create('div', 'detail-frame');
-  card.append(create('b', frame.core_pass ? 'positive' : 'negative', name + (frame.core_pass ? ' · UYGUN' : ' · BEKLE')));
-  const first = 'RSI ' + Number(frame.rsi).toFixed(1) + ' · Fisher ' + Number(frame.fisher).toFixed(2);
-  const second = 'MACD ' + (frame.macd_cross_up ? 'yukarı kesişim' : frame.macd_cross_down ? 'aşağı kesişim' : 'kesişim bekliyor');
-  const third = 'EMA200 ' + (frame.above_ema200 ? 'üstünde' : 'altında') + ' · Retest ' + (frame.retest ? 'var' : 'bekliyor');
-  card.append(create('p', '', first + '\n' + second + '\n' + third));
+  card.append(create('b', frame.core_pass ? 'positive' : 'negative', name + ' · ' + frame.checks_passed + '/5 ' + (frame.core_pass ? 'UYGUN' : 'BEKLE')));
+  card.append(create('p', '', frameSummary(frame) + '\nRetest ' + (frame.retest ? 'var' : 'bekliyor')));
   return card;
 }
 
@@ -478,6 +516,7 @@ byId('trade-form').addEventListener('submit', event => {
     quantity: amount / signal.coin.price,
     entry: signal.coin.price,
     target: signal.target,
+    extendedTarget: signal.extended_target,
     stop: signal.stop,
   });
   savePortfolio();

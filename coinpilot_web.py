@@ -24,6 +24,8 @@ app.json.ensure_ascii = False
 exchange = ccxt.btcturk({"enableRateLimit": True, "timeout": 15000})
 
 STABLE_ASSETS = {"USDT", "USDC", "FDUSD", "TUSD", "DAI"}
+RSI_PERIOD = 10
+VOLUME_PERIOD = 20
 market_lock = threading.RLock()
 scan_lock = threading.Lock()
 markets: dict[str, dict] = {}
@@ -212,7 +214,7 @@ def ema(values: list[float], period: int) -> list[float]:
     return output
 
 
-def rsi(values: list[float], period: int = 14) -> float:
+def rsi(values: list[float], period: int = RSI_PERIOD) -> float:
     gains = losses = 0.0
     for index in range(len(values) - period, len(values)):
         change = values[index] - values[index - 1]
@@ -262,6 +264,21 @@ def recent_cross_down(line: list[float], signal: list[float]) -> bool:
     return False
 
 
+def volume_status(volumes: list[float], period: int = VOLUME_PERIOD) -> tuple[float, float, float, bool]:
+    """Compare the last *closed* candle volume with its trailing average.
+
+    The newest kline can still be forming.  Looking at the prior completed
+    candle prevents an intrabar volume spike (or an almost-empty new candle)
+    from changing the radar result every few seconds.
+    """
+    if len(volumes) < period + 2:
+        return 0.0, 0.0, 0.0, False
+    closed_volume = float(volumes[-2])
+    average = sum(float(value) for value in volumes[-(period + 2) : -2]) / period
+    ratio = closed_volume / average if average else 0.0
+    return closed_volume, average, ratio, closed_volume >= average
+
+
 def trend_info(candles: dict[str, list[float]]) -> tuple[bool, bool]:
     size = len(candles["c"])
     old_start = max(0, size - 65)
@@ -285,24 +302,55 @@ def analyse_frame(name: str, candles: dict[str, list[float]], live_price: float)
     fisher_values = fisher(adjusted, 30)
     breakout, retest = trend_info(adjusted)
     ema_200 = ema(closes, 200)[-1]
-    rsi_value = rsi(closes, 14)
+    rsi_value = rsi(closes, RSI_PERIOD)
     fisher_value = fisher_values[-1]
+    fisher_signal = [fisher_values[0], *fisher_values[:-1]]
     up_cross = recent_cross_up(line, signal)
     down_cross = recent_cross_down(line, signal)
+    fisher_cross_up = recent_cross_up(fisher_values, fisher_signal)
+    fisher_cross_down = recent_cross_down(fisher_values, fisher_signal)
+    fisher_rising = fisher_values[-1] > fisher_values[-2]
+    macd_above_zero = line[-1] > 0
+    macd_condition = up_cross or macd_above_zero
+    fisher_condition = fisher_value > 0 and (fisher_cross_up or fisher_rising)
+    closed_volume, average_volume, volume_ratio, above_average_volume = volume_status(
+        candles["v"]
+    )
     core_pass = (
         rsi_value > 50
-        and fisher_value > 0
-        and up_cross
+        and fisher_condition
+        and macd_condition
         and live_price > ema_200
+        and above_average_volume
+    )
+    checks_passed = sum(
+        (
+            rsi_value > 50,
+            fisher_condition,
+            macd_condition,
+            live_price > ema_200,
+            above_average_volume,
+        )
     )
     return {
         "name": name,
         "rsi": round(rsi_value, 2),
         "fisher": round(fisher_value, 4),
+        "fisher_rising": fisher_rising,
+        "fisher_cross_up": fisher_cross_up,
+        "fisher_cross_down": fisher_cross_down,
+        "fisher_condition": fisher_condition,
         "ema200": ema_200,
         "above_ema200": live_price > ema_200,
         "macd_cross_up": up_cross,
         "macd_cross_down": down_cross,
+        "macd_above_zero": macd_above_zero,
+        "macd_condition": macd_condition,
+        "closed_volume": closed_volume,
+        "average_volume": average_volume,
+        "volume_ratio": round(volume_ratio, 2),
+        "above_average_volume": above_average_volume,
+        "checks_passed": checks_passed,
         "trend_break": breakout,
         "retest": retest,
         "core_pass": core_pass,
@@ -329,6 +377,22 @@ def fib_levels(frame: dict) -> dict:
     }
 
 
+def exit_levels(price: float, fib: dict) -> tuple[float, float]:
+    """Return a conservative first take-profit and an extension target.
+
+    0.618 and 0.786 are displayed as a retracement/retest zone.  For an
+    existing long position, resistance and the 1.272 extension are more
+    meaningful sell references than presenting retracement levels as a
+    guaranteed exit.
+    """
+    resistance = max(float(fib["resistance"]), float(fib["high"]))
+    extension = float(fib["1272"])
+    first_target = resistance if resistance > price * 1.003 else extension
+    first_target = max(first_target, price * 1.03)
+    extension_target = max(extension, first_target)
+    return first_target, extension_target
+
+
 def scan_coin(coin: dict) -> dict | None:
     try:
         daily = analyse_frame(
@@ -344,8 +408,15 @@ def scan_coin(coin: dict) -> dict | None:
             get_candles(coin["pair"], "60", 300 * 3600),
             coin["price"],
         )
-        frames = [daily, four_hour, one_hour]
-        passed = sum(frame["core_pass"] for frame in frames)
+        fifteen_minute = analyse_frame(
+            "15 Dakika",
+            get_candles(coin["pair"], "15", 300 * 15 * 60),
+            coin["price"],
+        )
+        higher_frames = [daily, four_hour, one_hour]
+        frames = [*higher_frames, fifteen_minute]
+        passed = sum(frame["core_pass"] for frame in higher_frames)
+        all_frames_passed = all(frame["core_pass"] for frame in frames)
         trend_confirmed = (
             one_hour["trend_break"]
             and one_hour["retest"]
@@ -359,18 +430,23 @@ def scan_coin(coin: dict) -> dict | None:
         fib = fib_levels(four_hour)
         critical_low, critical_high = sorted((fib["618"], fib["786"]))
         in_fib_zone = critical_low <= coin["price"] <= critical_high
-        score = passed * 24 + (14 if trend_confirmed else 0) + (10 if in_fib_zone else 0)
+        target, extended_target = exit_levels(coin["price"], fib)
+        score = (
+            passed * 18
+            + (14 if fifteen_minute["core_pass"] else 0)
+            + (14 if trend_confirmed else 0)
+            + (10 if in_fib_zone else 0)
+        )
         if sell_setup:
             score = min(score, 28)
         if sell_setup:
             action = "SAT"
-        elif passed == 3 and trend_confirmed and in_fib_zone:
+        elif all_frames_passed and trend_confirmed and in_fib_zone:
             action = "GÜÇLÜ AL"
         elif passed == 3:
             action = "AL İZLE"
         else:
             action = "BEKLE"
-        target = max(coin["price"] * 1.03, fib["1272"])
         stop_candidate = min(fib["786"] * 0.992, fib["support"] * 0.99)
         stop = stop_candidate if 0 < stop_candidate < coin["price"] else coin["price"] * 0.97
         return {
@@ -378,10 +454,12 @@ def scan_coin(coin: dict) -> dict | None:
             "action": action,
             "score": int(max(0, min(100, score))),
             "passed_frames": passed,
+            "all_frames_passed": all_frames_passed,
             "trend_confirmed": trend_confirmed,
             "in_fib_zone": in_fib_zone,
             "sell_setup": sell_setup,
             "target": target,
+            "extended_target": extended_target,
             "stop": stop,
             "target_pct": (target - coin["price"]) / coin["price"] * 100,
             "stop_pct": (coin["price"] - stop) / coin["price"] * 100,
@@ -390,13 +468,14 @@ def scan_coin(coin: dict) -> dict | None:
                 "daily": daily,
                 "four_hour": four_hour,
                 "one_hour": one_hour,
+                "fifteen_minute": fifteen_minute,
             },
             "chart": one_hour["closes"][-90:],
             "radar": [
-                1 if daily["rsi"] > 50 else 0.28,
-                1 if four_hour["above_ema200"] else 0.28,
-                1 if one_hour["fisher"] > 0 else 0.28,
-                1 if one_hour["macd_cross_up"] else 0.28,
+                1 if daily["core_pass"] else 0.28,
+                1 if four_hour["core_pass"] else 0.28,
+                1 if one_hour["core_pass"] else 0.28,
+                1 if fifteen_minute["core_pass"] else 0.28,
                 1 if trend_confirmed else 0.28,
                 1 if in_fib_zone else 0.28,
             ],

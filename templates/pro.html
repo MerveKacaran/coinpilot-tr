@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>CoinPilot TR · Teknik Radar</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/pro.css') }}">
+  <style>.detail-frame p{white-space:pre-line}</style>
   <script defer src="{{ url_for('static', filename='js/pro.js') }}"></script>
 </head>
 <body>
@@ -18,9 +19,9 @@
       <button class="nav" data-page="market">↗ <span>Piyasa Hareketi</span></button>
     </nav>
     <div class="sidebar-foot">
-      Günlük · 4 Saat · 1 Saat<br>
-      RSI · Fisher · MACD · EMA200<br>
-      Fibonacci · Trend kırılımı
+      Günlük · 4 Saat · 1 Saat · 15 Dakika<br>
+      RSI(10) · Fisher(30) · MACD · EMA200<br>
+      Hacim · Fibonacci · Trend kırılımı
     </div>
   </aside>
   <section class="shell">
@@ -49,8 +50,10 @@
       <section class="page" id="page-radar">
         <div class="callout">
           <b>Çoklu zaman dilimi taraması</b>
-          <span>Her coin Günlük, 4 Saat ve 1 Saat için RSI(14) &gt; 50, Fisher(30) &gt; 0, yukarı MACD kesişimi ve EMA200 üstü koşullarıyla kontrol edilir.</span>
+          <span>Günlük, 4 Saat, 1 Saat ve 15 Dakika: RSI(10) &gt; 50, Fisher(30) sıfır üstü ve yukarı yönlü, MACD yukarı kesişim veya sıfır üstü, EMA200 üstü ve ortalama üstü hacim kontrol edilir. 15 dakika yalnızca giriş zamanlaması doğrulamasıdır.</span>
         </div>
+        <section class="section-head radar-positions-head"><div><small>AÇIK POZİSYONLAR · RADAR</small><h2>İşlemlerim</h2></div><button class="link" data-goto="positions">Portföye git</button></section>
+        <div class="positions top-positions" id="radar-positions"></div>
         <div class="section-head"><div><small>CANLI TEKNİK RADAR</small><h2>Kurallı işlem adayları</h2></div><span class="muted" id="radar-time">—</span></div>
         <div id="radar-grid" class="radar-grid"></div>
       </section>
