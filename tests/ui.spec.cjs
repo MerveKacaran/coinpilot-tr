@@ -5,14 +5,14 @@ const fs=require('node:fs/promises');
 const path=require('node:path');
 const base=process.env.TEST_URL||'http://127.0.0.1:10001';
 const names={one_hour:'1 Saat',four_hour:'4 Saat',five_minute:'5 Dakika',fifteen_minute:'15 Dakika',daily:'Günlük'};
-let price=100,entryPrice=102,quotePrice=105,failedQuote=false,analyzeCalls=0,testBrowser,unsafeMode=0,exitCalls=0;
+let price=100,entryPrice=102,quotePrice=105,failedQuote=false,analyzeCalls=0,testBrowser,unsafeMode=0,exitCalls=0,buyScore=86;
 const quote=(value=price)=>({symbol:'TEST/TRY',pair:'TESTTRY',price:value,change:3,bid:value-.02,ask:value+.02,price_updated_at:new Date().toISOString(),price_source:'Test fixture'});
 function exitFixture(frames){return{status:'success',symbol:'TEST/TRY',frames:Object.fromEntries(frames.map(k=>[k,{name:names[k],count:3,stage:'SATIŞ UYARISI',closed_at:Math.floor(Date.now()/1000)-300,checks:['EMA8','MACD','Fisher(30)','RSI(10)'].map((label,i)=>({label,ok:i<3,value:1,reason:label==='MACD'?'MACD sıfır üstünde; aşağı kesişim.':'Fixture çıkış koşulu'}))}])),errors:[],analyzed_at:new Date().toISOString()};}
 function signal(frames=['one_hour'],fresh=false){const chart=Array.from({length:120},(_,i)=>({time:Math.floor(Date.now()/1000)-(121-i)*300,open:99+i*.005,close:99.03+i*.005,high:99.12+i*.005,low:98.9+i*.005,volume:100+i,ema:98.5+i*.004,rsi:53+Math.sin(i/10)*2,macd:.02+Math.sin(i/20)*.01,macd_signal:.015+Math.sin(i/20)*.01,fisher:.3+Math.sin(i/20)*.1,fisher_signal:.28+Math.sin(i/20)*.1}));return{coin:quote(fresh?entryPrice:100),frame_keys:frames,frames:Object.fromEntries(frames.map(k=>[k,{name:names[k],core_pass:true,checks_passed:5,volume_ratio:1.6,checks:['EMA200','RSI10','MACD','Fisher30','Hacim'].map(label=>({label,ok:true,value:1,reason:'Fixture koşulu'})),chart,closed_at:chart.at(-1).time+300,trend_break:true,retest:true}])),score:86,action:'AL İZLE',can_open_trade:true,risk_ok:true,all_frames_passed:true,chart_frame:frames[0],levels_frame:frames[0],chart:chart.map(p=>p.close),radar:[...frames.map(()=>1),1,.3],fib:{'618':99,'786':98,support:98,resistance:110},target:110,stop:98,target_pct:10,stop_pct:2,risk_reward:5,analyzed_at:new Date().toISOString(),summary:frames.map(k=>names[k]+' 5/5: tüm koşullar sağlandı.')};}
 async function main(){const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe'});testBrowser=browser;const context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true});const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/api/**',async route=>{const u=new URL(route.request().url()),frames=(u.searchParams.get('frames')||'one_hour').split(',');let data;
     if(u.pathname==='/api/dashboard')data={status:'success',quotes:{'TEST/TRY':quote()},live:true,gainers:[quote()],losers:[quote()]};
-    else if(u.pathname==='/api/radar')data={status:'success',items:[signal(frames)],scanning:false,scanned:1,total:1,errors:[],updated_at:new Date().toISOString()};
+    else if(u.pathname==='/api/radar')data={status:'success',items:[{...signal(frames),score:buyScore}],scanning:false,scanned:1,total:1,errors:[],updated_at:new Date().toISOString()};
     else if(u.pathname==='/api/analyze'){analyzeCalls++;data={status:'success',item:signal(frames,u.searchParams.get('fresh')==='1')};if(unsafeMode)Object.assign(data.item,{can_open_trade:false,all_frames_passed:false,risk_ok:false,sell_setup:true,action:'SAT',stop:unsafeMode===1?75:null,target:unsafeMode===1?110:null});}
     else if(u.pathname==='/api/quote'){if(failedQuote){await route.fulfill({status:503,json:{status:'error',message:'Fixture bağlantı hatası'}});return;}data={status:'success',coin:quote(quotePrice)};}
     else if(u.pathname==='/api/exit'){exitCalls++;data=exitFixture(frames);}
@@ -46,7 +46,7 @@ async function main(){const browser=await chromium.launch({headless:true,executa
   assert.equal(await page.locator('#exit-grid .position').count(),0,'Closed positions leave sell monitoring');
   // Old backup must not reopen a subsequently closed position.
   await page.locator('#import-backup').setInputFiles({name:'backup.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(backup))});await page.waitForFunction(()=>document.querySelector('#backup-message').textContent.includes('birleştirildi'));assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('coinpilot-pro-positions')).length),0);
-  const mobile=await context.newPage();await mobile.setViewportSize({width:390,height:844});mobile.on('pageerror',e=>errors.push(e.message));await mobile.route('**/api/**',async route=>{const url=new URL(route.request().url()),frames=(url.searchParams.get('frames')||'five_minute').split(',');await route.fulfill({json:url.pathname==='/api/dashboard'?{status:'success',quotes:{'TEST/TRY':quote()},live:true,gainers:[quote()],losers:[quote()]}:url.pathname==='/api/analyze'?{status:'success',item:signal(frames,true)}:{status:'success',items:[signal(frames)],scanning:false,scanned:1,total:1,errors:[]}});});
+  const mobile=await context.newPage();await mobile.setViewportSize({width:390,height:844});mobile.on('pageerror',e=>errors.push(e.message));await mobile.route('**/api/**',async route=>{const url=new URL(route.request().url()),frames=(url.searchParams.get('frames')||'five_minute').split(',');await route.fulfill({json:url.pathname==='/api/dashboard'?{status:'success',quotes:{'TEST/TRY':quote()},live:true,gainers:[quote()],losers:[quote()]}:url.pathname==='/api/exit'?exitFixture(frames):url.pathname==='/api/analyze'?{status:'success',item:signal(frames,true)}:{status:'success',items:[signal(frames)],scanning:false,scanned:1,total:1,errors:[]}});});
   await mobile.goto(base);await mobile.locator('#menu-toggle').click();await mobile.locator('[data-page=radar]').click();await mobile.locator('#radar-grid .signal').waitFor();await mobile.waitForFunction(()=>document.querySelector('#sidebar').getBoundingClientRect().right<=1);assert.ok(await mobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Mobile has no horizontal overflow');await mobile.screenshot({path:path.join(__dirname,'../test-output/radar-mobile.png'),fullPage:true});
   await mobile.locator('#radar-grid').getByRole('button',{name:'SANAL İŞLEM AÇ',exact:true}).click();await mobile.waitForFunction(()=>!document.querySelector('#trade-submit').disabled);await mobile.locator('#trade-submit').scrollIntoViewIfNeeded();const buttonBox=await mobile.locator('#trade-submit').boundingBox();assert.ok(buttonBox.y+buttonBox.height<844-20,'Trade button has bottom clearance');await mobile.screenshot({path:path.join(__dirname,'../test-output/trade-mobile.png')});
   for(unsafeMode=1;unsafeMode<=2;unsafeMode++){
@@ -59,6 +59,41 @@ async function main(){const browser=await chromium.launch({headless:true,executa
   await page.reload();await page.locator('[data-page=positions]').click();assert.equal(await page.locator('#position-page-list .position').count(),2);
   assert.match(await page.locator('#position-page-list').textContent(),/Hedef belirlenmedi/);
   assert.doesNotMatch(await page.locator('#alerts-list').textContent(),/Hedef seviyesine ulaştı/);
-  assert.deepEqual(errors,[]);await browser.close();console.log('PASS: existing UI flows plus unrestricted risky/SAT paper trades, wide stops, absent levels and reload preservation.');
+  // Each page and a reload must start at the top, on desktop and mobile.
+  await mobile.locator('#trade-dialog').evaluate(dialog=>dialog.close());
+  for(const surface of [page,mobile]){
+    for(const destination of ['market','radar','positions','exits','home']){
+      await surface.evaluate(()=>{window.scrollTo(0,document.documentElement.scrollHeight);document.querySelector('#sidebar').classList.add('open');});
+      await surface.locator('[data-page='+destination+']').click();
+      await surface.waitForFunction(()=>window.scrollY<=1);
+      assert.equal(await surface.evaluate(()=>window.scrollY),0,'Page '+destination+' opens at top');
+    }
+    await surface.evaluate(()=>window.scrollTo(0,document.documentElement.scrollHeight));await surface.reload();
+    await surface.waitForFunction(()=>window.scrollY<=1);
+  }
+  await page.locator('[data-page=positions]').click();
+  const scrollAfterRefresh=await page.evaluate(async()=>{window.scrollTo(0,180);const before=window.scrollY;await loadDashboard();return[before,window.scrollY];});
+  assert.ok(scrollAfterRefresh[0]>0);assert.equal(scrollAfterRefresh[1],scrollAfterRefresh[0],'Live refresh must not reset scroll');
+  await page.locator('[data-page=radar]').click();await page.locator('#radar-grid').getByRole('button',{name:'GRAFİK & DETAY',exact:true}).first().click();
+  await page.locator('#detail-dialog').evaluate(dialog=>{dialog.scrollTop=dialog.scrollHeight;dialog.close();});
+  await page.locator('#radar-grid').getByRole('button',{name:'GRAFİK & DETAY',exact:true}).first().click();
+  await page.waitForFunction(()=>document.querySelector('#detail-dialog').scrollTop===0);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#sound-toggle').getAttribute('aria-pressed'),'false','No sound enabled without a gesture');
+  await page.locator('#sound-toggle').click();await page.waitForFunction(()=>document.querySelector('#sound-toggle').getAttribute('aria-pressed')==='true');
+  await page.evaluate(()=>{window.__soundNodes=0;const original=audioContext.createOscillator.bind(audioContext);audioContext.createOscillator=()=>{window.__soundNodes++;return original();};lastSoundAt=-Infinity;});
+  buyScore=95;await page.evaluate(()=>loadRadar(true));
+  await page.waitForFunction(()=>document.querySelector('#notification-toasts').textContent.includes('95/100'));
+  assert.equal(await page.evaluate(()=>window.__soundNodes),2,'A qualifying buy emits a two-note sound');
+  await page.evaluate(()=>loadRadar(true));assert.equal(await page.evaluate(()=>window.__soundNodes),2,'Unchanged signals do not repeat the sound');
+  await page.locator('#sound-toggle').click();await page.evaluate(()=>alertOnce('muted-test','warning','Sadece yazılı bildirim testi'));
+  assert.match(await page.locator('#notification-toasts').textContent(),/Sadece yazılı/);assert.equal(await page.evaluate(()=>window.__soundNodes),2);
+  await page.locator('#alerts-enabled').uncheck();const alertCount=await page.evaluate(()=>state.alerts.length);
+  await page.evaluate(()=>alertOnce('disabled-test','warning','Görünmemeli'));assert.equal(await page.evaluate(()=>state.alerts.length),alertCount);
+  await page.locator('#alerts-enabled').check();
+  await page.evaluate(()=>{const p={id:'loss-test',coin:{symbol:'LOSS/TRY'}},q={price:100,price_updated_at:new Date().toISOString()};notifyPositionLoss(p,1,q);notifyPositionLoss(p,-.5,q);notifyPositionLoss(p,-.6,q);});
+  assert.equal(await page.evaluate(()=>state.alerts.filter(a=>a.message.includes('LOSS/TRY')&&a.message.includes('net zarara geçti')).length),1);
+  await page.screenshot({path:path.join(__dirname,'../test-output/notifications.png')});
+  assert.deepEqual(errors,[]);await browser.close();console.log('PASS: all UI flows, desktop/mobile scroll reset, refresh scroll preservation, dialog reset, sound opt-in, 90+ buy notification, deduplication, mute and net-loss alerts.');
 }
 main().catch(async e=>{console.error(e);await testBrowser?.close();process.exitCode=1;});

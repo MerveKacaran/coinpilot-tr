@@ -1,4 +1,8 @@
-# CoinPilot TR 4.2.0
+# CoinPilot TR 4.2.1
+
+4.2.1: Menü sayfaları açıldığında kaydırma konumu başa alınır; tarayıcının önceki alt konumu yükleme/yenilemede geri getirmesi kapatılır. Detay ve işlem pencereleri tekrar açıldığında da baştan gösterilir. Periyodik fiyat/analiz yenilemeleri kullanıcının kaydırma konumunu sıfırlamaz.
+
+Sesli/yazılı bildirimler: 90/100 üzeri (90 dahil) uygun AL adayları, açık pozisyonun net zarara geçişi, %2/%5 net zarar eşikleri ve mevcut hedef/stop/satış uyarıları ekranda geçici bildirim ve kalıcı oturum listesiyle gösterilir. Aynı olayın tekrarı 90 saniye, toplu uyarı sesleri 8 saniye arayla sınırlandırılır. İlk maliyet kaynaklı eksi değer tek başına “zarara geçti” bildirimi üretmez. Ses için kullanıcı her sayfa açılışında düğmeye basar; Web Audio ile kısa deneme sesi çalar. İşletim sistemi bildirimi veya kapalı sayfada arka plan servisi eklenmedi. Genel bildirim kapatma ve ayrı ses kapatma desteklenir.
 
 4.2.0: Ayrı Satış Takibi sayfası eklendi. Açık pozisyonlar, kaydedilmiş giriş periyotlarıyla otomatik izlenir; eski pozisyonlarda 1 saat kullanılır. Kapanmış mumlarda EMA8 altı fiyat, MACD'nin sinyal çizgisi altına kesişimi veya altındayken süren düşüşü (sıfır altı zorunlu değil), Fisher30'un benzer aşağı yönü ve RSI10'un 50 altında yeni kesişimi veya süren düşüşü kontrol edilir. 1/4 erken uyarı, 2/4 zayıflama, 3–4/4 satış uyarısıdır. Bu eşikler deneysel tasarım tercihidir; doğrulanmış kârlılık/olasılık değildir. Hacim çıkışın zorunlu koşulu yapılmadı. EMA200 alış filtresinde kalır, EMA8 grafiklere mor çizgiyle eklendi.
 
