@@ -9,7 +9,7 @@ async function run(){
   const context=await browser.newContext({viewport:{width:1440,height:1000}}),page=await context.newPage();
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto('https://coinpilot-tr.onrender.com/',{waitUntil:'domcontentloaded',timeout:60000});
-  assert.match(await page.locator('footer').textContent(),/4\.2\.2/);
+  assert.match(await page.locator('footer').textContent(),/4\.2\.3/);
   assert.equal(await page.locator('#sound-toggle').getAttribute('aria-pressed'),'false');
   for(const name of ['radar','positions','exits','market','home']){
     await page.evaluate(()=>window.scrollTo(0,document.documentElement.scrollHeight));
@@ -29,6 +29,15 @@ async function run(){
   await page.waitForFunction(()=>document.querySelector('.chart-panel canvas')?.width>100);
   await page.screenshot({path:path.join(__dirname,'../test-output/live-detail.png')});
   await page.locator('[data-close=detail-dialog]').click();
+  await page.locator('#market-analysis').getByRole('button',{name:'SANAL İŞLEM AÇ',exact:true}).click();
+  await page.locator('#trade-frame').selectOption('fifteen_minute');
+  await page.waitForFunction(()=>!document.querySelector('#trade-submit').disabled&&state.selected?.frame_keys[0]==='fifteen_minute',null,{timeout:60000});
+  assert.match(await page.locator('#trade-risk').textContent(),/15 Dakika planı/);
+  assert.match(await page.locator('#trade-target').textContent(),/%|Belirlenemedi/);
+  assert.match(await page.locator('#trade-stop').textContent(),/%|Belirlenemedi/);
+  console.log('LIVE plan:',await page.locator('#trade-target').textContent(),await page.locator('#trade-stop').textContent());
+  await page.screenshot({path:path.join(__dirname,'../test-output/live-plan.png')});
+  await page.locator('[data-close=trade-dialog]').click();
   await page.locator('[data-page=radar]').click();
   for(const input of await page.locator('#timeframe-controls input').all())await input.uncheck();
   await page.locator('#timeframe-controls input[value=five_minute]').check();await page.locator('#scan-limit').selectOption('8');await page.locator('#apply-timeframes').click();

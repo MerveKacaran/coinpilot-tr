@@ -5,15 +5,15 @@ const fs=require('node:fs/promises');
 const path=require('node:path');
 const base=process.env.TEST_URL||'http://127.0.0.1:10001';
 const names={one_hour:'1 Saat',four_hour:'4 Saat',five_minute:'5 Dakika',fifteen_minute:'15 Dakika',daily:'Günlük'};
-let price=100,entryPrice=102,quotePrice=105,failedQuote=false,analyzeCalls=0,testBrowser,unsafeMode=0,exitCalls=0,buyScore=86;
+let price=100,entryPrice=102,quotePrice=105,failedQuote=false,analyzeCalls=0,testBrowser,unsafeMode=0,exitCalls=0,buyScore=86,buyChecks=5,delayFrame=false;
 const quote=(value=price)=>({symbol:'TEST/TRY',pair:'TESTTRY',price:value,change:3,bid:value-.02,ask:value+.02,price_updated_at:new Date().toISOString(),price_source:'Test fixture'});
 function exitFixture(frames){return{status:'success',symbol:'TEST/TRY',frames:Object.fromEntries(frames.map(k=>[k,{name:names[k],count:3,stage:'SATIŞ UYARISI',closed_at:Math.floor(Date.now()/1000)-300,checks:['EMA8','MACD','Fisher(30)','RSI(10)'].map((label,i)=>({label,ok:i<3,value:1,reason:label==='MACD'?'MACD sıfır üstünde; aşağı kesişim.':'Fixture çıkış koşulu'}))}])),errors:[],analyzed_at:new Date().toISOString()};}
-function signal(frames=['one_hour'],fresh=false){const chart=Array.from({length:120},(_,i)=>({time:Math.floor(Date.now()/1000)-(121-i)*300,open:99+i*.005,close:99.03+i*.005,high:99.12+i*.005,low:98.9+i*.005,volume:100+i,ema:98.5+i*.004,rsi:53+Math.sin(i/10)*2,macd:.02+Math.sin(i/20)*.01,macd_signal:.015+Math.sin(i/20)*.01,fisher:.3+Math.sin(i/20)*.1,fisher_signal:.28+Math.sin(i/20)*.1}));return{coin:quote(fresh?entryPrice:100),frame_keys:frames,frames:Object.fromEntries(frames.map(k=>[k,{name:names[k],core_pass:true,checks_passed:5,volume_ratio:1.6,checks:['EMA200','RSI10','MACD','Fisher30','Hacim'].map(label=>({label,ok:true,value:1,reason:'Fixture koşulu'})),chart,closed_at:chart.at(-1).time+300,trend_break:true,retest:true}])),score:86,action:'AL İZLE',can_open_trade:true,risk_ok:true,all_frames_passed:true,chart_frame:frames[0],levels_frame:frames[0],chart:chart.map(p=>p.close),radar:[...frames.map(()=>1),1,.3],fib:{'618':99,'786':98,support:98,resistance:110},target:110,stop:98,target_pct:10,stop_pct:2,risk_reward:5,analyzed_at:new Date().toISOString(),summary:frames.map(k=>names[k]+' 5/5: tüm koşullar sağlandı.')};}
+function signal(frames=['one_hour'],fresh=false){const chart=Array.from({length:120},(_,i)=>({time:Math.floor(Date.now()/1000)-(121-i)*300,open:99+i*.005,close:99.03+i*.005,high:99.12+i*.005,low:98.9+i*.005,volume:100+i,ema:98.5+i*.004,rsi:53+Math.sin(i/10)*2,macd:.02+Math.sin(i/20)*.01,macd_signal:.015+Math.sin(i/20)*.01,fisher:.3+Math.sin(i/20)*.1,fisher_signal:.28+Math.sin(i/20)*.1}));return{coin:quote(fresh?entryPrice:100),frame_keys:frames,frames:Object.fromEntries(frames.map(k=>[k,{name:names[k],core_pass:true,checks_passed:5,volume_ratio:1.6,checks:['EMA200','RSI10','MACD','Fisher30','Hacim'].map(label=>({label,ok:true,value:1,reason:'Fixture koşulu'})),chart,closed_at:chart.at(-1).time+300,trend_break:true,retest:true}])),score:86,action:'AL İZLE',can_open_trade:true,risk_ok:true,all_frames_passed:true,chart_frame:frames[0],levels_frame:frames[0],chart:chart.map(p=>p.close),radar:[...frames.map(()=>1),1,.3],fib:{'618':99,'786':98,support:98,resistance:110},target:frames[0]==='fifteen_minute'?114:frames[0]==='five_minute'?108:110,stop:98,target_pct:10,stop_pct:2,risk_reward:5,analyzed_at:new Date().toISOString(),summary:frames.map(k=>names[k]+' 5/5: tüm koşullar sağlandı.')};}
 async function main(){const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe'});testBrowser=browser;const context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true});const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/api/**',async route=>{const u=new URL(route.request().url()),frames=(u.searchParams.get('frames')||'one_hour').split(',');let data;
     if(u.pathname==='/api/dashboard')data={status:'success',quotes:{'TEST/TRY':quote()},live:true,gainers:[quote()],losers:[quote()]};
-    else if(u.pathname==='/api/radar')data={status:'success',items:[{...signal(frames),score:buyScore}],scanning:false,scanned:1,total:1,errors:[],updated_at:new Date().toISOString()};
-    else if(u.pathname==='/api/analyze'){analyzeCalls++;data={status:'success',item:signal(frames,u.searchParams.get('fresh')==='1')};if(unsafeMode)Object.assign(data.item,{can_open_trade:false,all_frames_passed:false,risk_ok:false,sell_setup:true,action:'SAT',stop:unsafeMode===1?75:null,target:unsafeMode===1?110:null});}
+    else if(u.pathname==='/api/radar'){const item={...signal(frames),score:buyScore,can_open_trade:buyChecks===5};for(const f of Object.values(item.frames)){f.checks_passed=buyChecks;f.core_pass=buyChecks===5;}data={status:'success',items:[item],scanning:false,scanned:1,total:1,errors:[],updated_at:new Date().toISOString()};}
+    else if(u.pathname==='/api/analyze'){analyzeCalls++;if(delayFrame&&frames[0]==='one_hour')await new Promise(resolve=>setTimeout(resolve,500));data={status:'success',item:signal(frames,u.searchParams.get('fresh')==='1')};if(unsafeMode)Object.assign(data.item,{can_open_trade:false,all_frames_passed:false,risk_ok:false,sell_setup:true,action:'SAT',stop:unsafeMode===1?75:null,target:unsafeMode===1?110:null});}
     else if(u.pathname==='/api/quote'){if(failedQuote){await route.fulfill({status:503,json:{status:'error',message:'Fixture bağlantı hatası'}});return;}data={status:'success',coin:quote(quotePrice)};}
     else if(u.pathname==='/api/exit'){exitCalls++;data=exitFixture(frames);}
     else if(u.pathname==='/api/backtest')data={status:'success',frame:'five_minute',result:{bars:400,from_time:1700000000,to_time:1701000000,trade_count:10,net_return_pct:2,win_rate:60,max_drawdown_pct:3,profit_factor:1.3,note:'Kontrollü test'}};
@@ -31,13 +31,20 @@ async function main(){const browser=await chromium.launch({headless:true,executa
   const pixels=await page.locator('.chart-panel canvas').evaluate(c=>{const a=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let n=0;for(let i=3;i<a.length;i+=4)if(a[i])n++;return n;});assert.ok(pixels>1000,'Candlestick chart rendered');
   await fs.mkdir(path.join(__dirname,'../test-output'),{recursive:true});await page.screenshot({path:path.join(__dirname,'../test-output/detail-desktop.png')});
   await page.locator('[data-close=detail-dialog]').click();await page.locator('#market-analysis').getByRole('button',{name:'SANAL İŞLEM AÇ',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('#trade-submit').disabled);assert.match(await page.locator('#trade-entry').textContent(),/102/);entryPrice=103;
-  await page.locator('#trade-submit').click();await page.waitForFunction(()=>JSON.parse(localStorage.getItem('coinpilot-pro-positions')||'[]').length===1);let position=await page.evaluate(()=>JSON.parse(localStorage.getItem('coinpilot-pro-positions'))[0]);assert.ok(position.entry>103&&position.entry<104);assert.equal(position.fee,.001);assert.ok(analyzeCalls>=3);
+  await page.locator('#trade-frame').selectOption('five_minute');await page.waitForFunction(()=>!document.querySelector('#trade-submit').disabled&&state.selected?.frame_keys[0]==='five_minute');
+  assert.match(await page.locator('#trade-target').textContent(),/108.*%/);assert.match(await page.locator('#trade-stop').textContent(),/98.*-.*%/);
+  delayFrame=true;await page.locator('#trade-frame').selectOption('one_hour');await page.locator('#trade-frame').selectOption('fifteen_minute');
+  await page.waitForFunction(()=>!document.querySelector('#trade-submit').disabled&&state.selected?.frame_keys[0]==='fifteen_minute');
+  await page.waitForTimeout(650);assert.deepEqual(await page.evaluate(()=>state.selected.frame_keys),['fifteen_minute'],'Slow old response cannot replace selected plan');delayFrame=false;
+  assert.match(await page.locator('#trade-target').textContent(),/114.*%/);
+  await page.screenshot({path:path.join(__dirname,'../test-output/selected-plan.png')});
+  await page.locator('#trade-submit').click();await page.waitForFunction(()=>JSON.parse(localStorage.getItem('coinpilot-pro-positions')||'[]').length===1);let position=await page.evaluate(()=>JSON.parse(localStorage.getItem('coinpilot-pro-positions'))[0]);assert.ok(position.entry>103&&position.entry<104);assert.equal(position.fee,.001);assert.deepEqual(position.frames,['fifteen_minute']);assert.equal(position.target,114);assert.ok(analyzeCalls>=3);
   await page.waitForFunction(()=>document.querySelector('#exit-grid')?.textContent.includes('SATIŞ UYARISI'));
   assert.ok(exitCalls>0,'Opening a position starts sell monitoring automatically');
   await page.locator('[data-page=exits]').click();await page.locator('#exit-grid summary').first().click();assert.match(await page.locator('#exit-grid').textContent(),/MACD sıfır üstünde/);
   await page.screenshot({path:path.join(__dirname,'../test-output/exit-desktop.png'),fullPage:true});
   assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('coinpilot-pro-positions')).length),1,'Sell warning must not automatically close the position');
-  await page.locator('[data-page=positions]').click();assert.match(await page.locator('#position-page-list').textContent(),/Tahmini net K\/Z/);
+  await page.locator('[data-page=positions]').click();assert.match(await page.locator('#position-page-list').textContent(),/Tahmini net K\/Z/);assert.match(await page.locator('#position-page-list').textContent(),/Hedef.*114.*%.*Stop.*98.*%/);assert.match(await page.locator('#position-page-list').textContent(),/Plan periyodu: 15 Dakika/);
   const downloadPromise=page.waitForEvent('download');await page.locator('#export-backup').click();const download=await downloadPromise;const backupPath=await download.path();const backup=JSON.parse(await fs.readFile(backupPath,'utf8'));assert.equal(backup.positions.length,1);
   // A malformed import cannot mutate the portfolio.
   await page.locator('#import-backup').setInputFiles({name:'bad.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({...backup,positions:[{...position,quantity:-1}]}))});await page.waitForFunction(()=>document.querySelector('#backup-message').textContent.includes('geçersiz'));assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('coinpilot-pro-positions')).length),1);
@@ -82,15 +89,15 @@ async function main(){const browser=await chromium.launch({headless:true,executa
   assert.equal(await page.locator('#sound-toggle').getAttribute('aria-pressed'),'false','No sound enabled without a gesture');
   await page.locator('#sound-toggle').click();await page.waitForFunction(()=>document.querySelector('#sound-toggle').getAttribute('aria-pressed')==='true');
   await page.evaluate(()=>{window.__soundNodes=0;const original=audioContext.createOscillator.bind(audioContext);audioContext.createOscillator=()=>{window.__soundNodes++;return original();};lastSoundAt=-Infinity;});
-  buyScore=95;await page.evaluate(()=>loadRadar(true));
-  await page.waitForFunction(()=>document.querySelector('#notification-toasts').textContent.includes('95/100'));
+  buyScore=65;buyChecks=3;await page.evaluate(()=>{state.alertStates.clear();notificationCooldowns.clear();byId('notification-toasts').replaceChildren();});await page.evaluate(()=>loadRadar(true));assert.equal(await page.locator('#notification-toasts .tone-buy').count(),0,'3/5 is not an AL alarm');buyChecks=4;await page.evaluate(()=>loadRadar(true));
+  await page.waitForFunction(()=>document.querySelector('#notification-toasts').textContent.includes('4/5 koşul'));
   assert.equal(await page.evaluate(()=>window.__soundNodes),4,'A qualifying buy emits a stronger four-note sound');
   assert.equal(await page.locator('#notification-toasts .tone-buy').count(),1);
-  assert.equal(await page.locator('#radar-grid .signal-badge-buy').evaluate(n=>getComputedStyle(n).color),'rgb(255, 143, 160)');
+  assert.equal(await page.locator('#notification-toasts .tone-buy small').evaluate(n=>getComputedStyle(n).color),'rgb(73, 223, 174)');
   await page.locator('#notification-toasts .tone-buy .notification-link').click();
   await page.waitForFunction(()=>state.page==='market'&&state.marketSymbol==='TEST/TRY'&&!marketBusy);
   assert.equal(await page.locator('#market-search-input').inputValue(),'TEST/TRY');
-  assert.equal(await page.locator('#market-analysis .signal-badge-sell').evaluate(n=>getComputedStyle(n).color),'rgb(73, 223, 174)');
+  assert.equal(await page.locator('#market-analysis .signal-badge-sell').evaluate(n=>getComputedStyle(n).color),'rgb(255, 143, 160)');
   await page.locator('[data-page=radar]').click();
   await page.evaluate(()=>loadRadar(true));assert.equal(await page.evaluate(()=>window.__soundNodes),4,'Unchanged signals do not repeat the sound');
   await page.locator('#sound-toggle').click();await page.evaluate(()=>alertOnce('muted-test','warning','Sadece yazılı bildirim testi'));
@@ -101,12 +108,22 @@ async function main(){const browser=await chromium.launch({headless:true,executa
   await page.evaluate(()=>{const p={id:'loss-test',coin:{symbol:'LOSS/TRY'}},q={price:100,price_updated_at:new Date().toISOString()};notifyPositionLoss(p,1,q);notifyPositionLoss(p,-.5,q);notifyPositionLoss(p,-.6,q);});
   assert.equal(await page.evaluate(()=>state.alerts.filter(a=>a.message.includes('LOSS/TRY')&&a.message.includes('net zarara geçti')).length),1);
   await page.screenshot({path:path.join(__dirname,'../test-output/notifications.png')});
+  const sellThresholds=await page.evaluate(()=>{
+    const p={coin:{symbol:'THRESH/TRY'},frames:['five_minute']},data={frames:{five_minute:{name:'5 Dakika',count:2}},errors:[]};
+    const count=()=>state.alerts.filter(a=>a.message.includes('THRESH/TRY')).length;
+    notifyExit(p,data);const below=count();data.frames.five_minute.count=3;notifyExit(p,data);const at=count();data.frames.five_minute.count=4;notifyExit(p,data);
+    return{below,at,above:count(),message:state.alerts.find(a=>a.message.includes('THRESH/TRY'))?.message};
+  });
+  assert.deepEqual([sellThresholds.below,sellThresholds.at,sellThresholds.above],[0,1,1],'Only 3/4+ triggers SAT; continued qualification is deduplicated');
+  assert.match(sellThresholds.message,/5 Dakika 3\/4/);
+  assert.match(await page.evaluate(()=>levelText(110,100)),/\+10\.00%/);assert.match(await page.evaluate(()=>levelText(95,100)),/-5\.00%/);
+  assert.equal(await page.evaluate(()=>levelText(null,100)),'Belirlenemedi');
   // Background indicators show both signal types and clear when returning.
   await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});alertOnce('tab-buy','new','TEST/TRY · AL sekme testi','buy');alertOnce('tab-sell','new','TEST/TRY · SAT sekme testi','sell');});
-  assert.match(await page.title(),/🔴 AL 1.*🟢 SAT 1/);
+  assert.match(await page.title(),/🟢 AL 1.*🔴 SAT 1/);
   const favicon=decodeURIComponent(await page.locator('#app-favicon').getAttribute('href'));
   assert.ok(favicon.includes('#ff7185')&&favicon.includes('#49dfae'));
-  assert.equal(await page.locator('#notification-toasts .tone-sell small').evaluate(n=>getComputedStyle(n).color),'rgb(73, 223, 174)');
+  assert.equal(await page.locator('#notification-toasts .tone-sell small').first().evaluate(n=>getComputedStyle(n).color),'rgb(255, 113, 133)');
   const hiddenPoll=page.waitForRequest(r=>r.url().includes('/api/dashboard'));
   await page.evaluate(()=>{lastBackgroundPoll=0;pollDashboard();});await hiddenPoll;
   await page.evaluate(()=>{delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));});
@@ -127,6 +144,6 @@ async function main(){const browser=await chromium.launch({headless:true,executa
   assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('coinpilot-pro-sound'))),true);
   await page.locator('#sound-toggle').click();await page.reload();
   assert.equal(await page.locator('#sound-toggle').getAttribute('aria-pressed'),'false');
-  assert.deepEqual(errors,[]);await browser.close();console.log('PASS: all UI flows, desktop/mobile scroll reset, refresh scroll preservation, dialog reset, sound opt-in, 90+ buy notification, deduplication, mute and net-loss alerts.');
+  assert.deepEqual(errors,[]);await browser.close();console.log('PASS: all UI flows, desktop/mobile scroll reset, refresh scroll preservation, dialog reset, sound opt-in, 4/5 buy threshold, per-position timeframe plan, price/percent levels, deduplication, mute and net-loss alerts.');
 }
 main().catch(async e=>{console.error(e);await testBrowser?.close();process.exitCode=1;});

@@ -1,7 +1,7 @@
 """Deterministic, closed-candle technical analysis. No network or order access."""
 import math
 
-VERSION = '4.2.2'
+VERSION = '4.2.3'
 FRAME_SPECS = {
     'daily': ('Günlük', 'D', 86400),
     'four_hour': ('4 Saat', '240', 14400),

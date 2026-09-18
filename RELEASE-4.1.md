@@ -1,4 +1,8 @@
-# CoinPilot TR 4.2.2
+# CoinPilot TR 4.2.3
+
+4.2.3: Sanal işlem açarken 5 dakika, 15 dakika, 1 saat, 4 saat veya günlük hedef/stop planı seçilir. Seçim yalnızca yeni işlemin seviyelerini ve otomatik satış takibinin periyodunu belirler; radar filtresini veya eski pozisyonları değiştirmez. Hızlı periyot değişimlerinde geciken eski yanıtlar yok sayılır. Onayda aynı periyotta güncel fiyat ve plan tekrar doğrulanır. İşlem penceresinde ve pozisyon kartlarında hedef/stop hem TL hem girişe göre fiyat değişimi yüzdesiyle gösterilir; maliyet sonrası net sonuç ayrıca belirtilir. Eksik seviyeler sıfır olarak gösterilmez.
+
+AL alarmı puan/5-of-5 işlem uygunluğu yerine seçilen periyotlardan herhangi birinde en az 4/5 koşula bakar; her alarmda periyot ve koşul sayısı belirtilir. Kullanıcı onayıyla satış koşulları dört adet olarak korunmuştur: en az 3/4 satış alarmı, 1/4 ve 2/4 yalnızca ekran uyarısıdır. AL yeşil, SAT kırmızı kutu, yazı ve sekme işareti kullanır. Eşiğin üzerinde kalan aynı olay tekrar ses üretmez. Manuel sanal işlemler risk uyarısıyla serbesttir; hiçbir alarm otomatik emir göndermez.
 
 4.2.2: Daha belirgin, yaklaşık bir saniyelik dört tonlu bildirim sesi ve %10–100 ses ayarı eklendi. Ses açık/kapalı tercihi ve düzeyi localStorage ile yenilemede korunur. Autoplay engeli tercihi kapatmaz; kullanıcıya etkinleştirme düğmesi sunulur ve sonraki kullanıcı etkileşiminde ses yeniden denenir. Bu, tarayıcı/işletim sistemi ses izinlerini atlatmaz.
 
