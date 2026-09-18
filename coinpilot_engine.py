@@ -1,7 +1,7 @@
 """Deterministic, closed-candle technical analysis. No network or order access."""
 import math
 
-VERSION = '4.1.2'
+VERSION = '4.2.0'
 FRAME_SPECS = {
     'daily': ('Günlük', 'D', 86400),
     'four_hour': ('4 Saat', '240', 14400),
@@ -100,9 +100,32 @@ def trend_info(c):
     return True, retest
 
 
+def exit_conditions(closes, ema8, rsis, macd, trigger, fish, fish_trigger):
+    """Heuristic long-position exit warnings, not probabilities or automatic orders."""
+    falling = lambda a: a[-1] < a[-2] <= a[-3]
+    macd_down = crosses(macd, trigger)[1]
+    fish_down = crosses(fish, fish_trigger)[1]
+    rsi_down = rsis[-2] >= 50 > rsis[-1]
+    m_ok = macd[-1] < trigger[-1] and (macd_down or falling(macd))
+    f_ok = fish[-1] < fish_trigger[-1] and (fish_down or falling(fish))
+    r_ok = rsis[-1] < 50 and (rsi_down or falling(rsis))
+    e_ok = closes[-1] < ema8[-1]
+    checks = [
+        dict(label='EMA8',ok=e_ok,value=ema8[-1],reason='Kapanış EMA8 altında.' if e_ok else 'Kapanış EMA8 altında değil.'),
+        dict(label='MACD',ok=m_ok,value=macd[-1],reason=('Yeni aşağı kesişim: mavi kırmızının altına indi.' if macd_down else 'Mavi kırmızının altında ve düşüş sürüyor.' if m_ok else 'Aşağı kesişim / düşüş teyidi yok.') + (' MACD sıfır üstünde; sıfır altı beklenmez.' if macd[-1]>=0 else ' MACD sıfır altında.')),
+        dict(label='Fisher(30)',ok=f_ok,value=fish[-1],reason='Yeni aşağı kesişim: mavi kırmızının altına indi.' if fish_down else 'Mavi kırmızının altında ve düşüş sürüyor.' if f_ok else 'Aşağı kesişim / düşüş teyidi yok.'),
+        dict(label='RSI(10)',ok=r_ok,value=rsis[-1],reason='50 altına yeni iniş.' if rsi_down else '50 altında düşüş sürüyor.' if r_ok else '50 altı düşüş teyidi yok.'),
+    ]
+    count=sum(c['ok'] for c in checks)
+    stage='SATIŞ UYARISI' if count>=3 else 'ZAYIFLAMA' if count==2 else 'ERKEN UYARI' if count==1 else 'ÇIKIŞ TEYİDİ YOK'
+    return dict(checks=checks,count=count,stage=stage,macd_cross_down=macd_down,fisher_cross_down=fish_down,
+                note='Deneysel 4 koşullu çıkış takibi; olasılık değildir. Sıfır altı MACD zorunlu değildir. Otomatik satış yapılmaz.')
+
+
 def analyse_frame(key, c):
     closes = c['c']
     rsis, emas = rsi_series(closes), ema(closes, 200)
+    ema8 = ema(closes, 8)
     fast, slow = ema(closes, 12), ema(closes, 26)
     line = [a-b for a,b in zip(fast,slow)]
     trigger = ema(line,9)
@@ -135,7 +158,7 @@ def analyse_frame(key, c):
     chart = []
     for i in range(max(0,len(closes)-120),len(closes)):
         chart.append(dict(time=c['t'][i],open=c['o'][i],high=c['h'][i],low=c['l'][i],close=closes[i],volume=c['v'][i],
-                          ema=emas[i],rsi=rsis[i],macd=line[i],macd_signal=trigger[i],fisher=fish[i],fisher_signal=fish_trigger[i]))
+                          ema=emas[i],ema8=ema8[i],rsi=rsis[i],macd=line[i],macd_signal=trigger[i],fisher=fish[i],fisher_signal=fish_trigger[i]))
     return dict(name=FRAME_SPECS[key][0],checks=checks,checks_passed=total,core_pass=total==5,
                 rsi=rsis[-1],rsi_condition=r_ok,rsi_cross_up=rup,rsi_rising=rising(rsis),
                 fisher=fish[-1],fisher_condition=f_ok,fisher_cross_up=fup,fisher_cross_down=fdown,
@@ -145,6 +168,7 @@ def analyse_frame(key, c):
                 macd_rising=m_rise,macd_bullish=m_bull,macd_condition=m_ok,
                 volume_ratio=ratio,above_average_volume=v_ok,closed_volume=c['v'][-1],average_volume=avg_volume,
                 trend_break=breakout,retest=retest,chart=chart,closed_at=c['t'][-1]+FRAME_SPECS[key][2],
+                exit=exit_conditions(closes,ema8,rsis,line,trigger,fish,fish_trigger),
                 highs=c['h'],lows=c['l'],closes=closes)
 
 

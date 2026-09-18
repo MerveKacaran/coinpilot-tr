@@ -1,4 +1,10 @@
-# CoinPilot TR 4.1.2
+# CoinPilot TR 4.2.0
+
+4.2.0: Ayrı Satış Takibi sayfası eklendi. Açık pozisyonlar, kaydedilmiş giriş periyotlarıyla otomatik izlenir; eski pozisyonlarda 1 saat kullanılır. Kapanmış mumlarda EMA8 altı fiyat, MACD'nin sinyal çizgisi altına kesişimi veya altındayken süren düşüşü (sıfır altı zorunlu değil), Fisher30'un benzer aşağı yönü ve RSI10'un 50 altında yeni kesişimi veya süren düşüşü kontrol edilir. 1/4 erken uyarı, 2/4 zayıflama, 3–4/4 satış uyarısıdır. Bu eşikler deneysel tasarım tercihidir; doğrulanmış kârlılık/olasılık değildir. Hacim çıkışın zorunlu koşulu yapılmadı. EMA200 alış filtresinde kalır, EMA8 grafiklere mor çizgiyle eklendi.
+
+Satış takibi yalnızca sayfa açıkken yaklaşık dakikada bir çalışır; pozisyon kapanınca izleme biter. Kapanmış mumlar önbellekten kullanılır. Periyot sonuçları toplanıp sahte ortak puan oluşturulmaz; en yüksek uyarının hangi periyotta olduğu gösterilir. Veri hatası veya gecikmesinde sonuç belirsiz olarak işaretlenir. Stop/hedef seviyeleri ayrıca güncel fiyatla izlenir. Hiçbir uyarı otomatik satış yapmaz; 4.1.2'de serbest bırakılan sanal alışlar serbest kalır. Mevcut geçmiş testi, bu yeni çıkış takibi kurallarını test etmez.
+
+MACD sinyal çizgisi kesişimi ile sıfır çizgisi kesişimi farklıdır; yatay piyasada yanıltıcı kesişimler olabilir. Referans: https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide/macd
 
 4.1.2: Kullanıcının talebiyle manuel sanal işlemde teknik teyit, SAT sinyali ve %8 stop mesafesi engelleri kaldırıldı. Bunlar uyarı olarak gösterilir; aşağıdaki 5/5 ve %8 kuralları yalnızca teknik uygunluk değerlendirmesi ve geçmiş test için geçerlidir. Geçerli hedef/stop yoksa seviye uydurulmaz; pozisyon bu seviyeler olmadan izlenebilir. Güncel fiyat ve geçerli tutar kontrolü korunur.
 

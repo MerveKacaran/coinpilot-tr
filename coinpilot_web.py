@@ -289,6 +289,28 @@ def radar():
     except ValueError as exc:return jsonify(status='error',message=str(exc)),400
 
 
+@app.get('/api/exit')
+def exit_monitor():
+    try:
+        keys=selected_frame_keys(request.args.get('frames'))
+        symbol=canonical_symbol(request.args.get('symbol'))
+        if not symbol:raise ValueError('Geçerli TRY paritesi seç.')
+        coin=get_coin(symbol)
+        frames={};errors=[]
+        for key in keys:
+            try:
+                frame=analyse_frame(key,get_candles(coin['pair'],key))
+                frames[key]=dict(name=frame['name'],closed_at=frame['closed_at'],**frame['exit'])
+            except Exception as exc:
+                errors.append(dict(frame=key,message=str(exc)[:160]))
+        if not frames:
+            return jsonify(status='error',message='Satış analizi için güncel ve yeterli mum verisi alınamadı.',errors=errors),503
+        return jsonify(status='success',symbol=symbol,frame_keys=keys,frames=frames,errors=errors,
+                       analyzed_at=iso(),version=VERSION,basis='Kapanmış mum; manuel sanal satış takibi')
+    except ValueError as exc:return jsonify(status='error',message=str(exc)),400
+    except Exception:return jsonify(status='error',message='Satış takibi verisine ulaşılamadı.'),503
+
+
 @app.get('/api/backtest')
 def test_strategy():
     try:

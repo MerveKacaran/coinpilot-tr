@@ -33,6 +33,28 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(self.client.get('/api/quote?symbol=TESTTRY').status_code,200)
             get.assert_called_once_with('TEST/TRY',True)
 
+    def test_exit_endpoint_tracks_saved_frames(self):
+        with patch.object(web,'get_coin',return_value=self.coin),patch.object(web,'get_candles',return_value=candles()):
+            response=self.client.get('/api/exit?symbol=TESTTRY&frames=five_minute,four_hour')
+            self.assertEqual(response.status_code,200)
+            data=response.get_json()
+            self.assertEqual(set(data['frames']),{'five_minute','four_hour'})
+            self.assertEqual(len(data['frames']['five_minute']['checks']),4)
+            self.assertEqual(data['frames']['five_minute']['checks'][0]['label'],'EMA8')
+
+    def test_exit_partial_data_is_explicit(self):
+        def get(pair,key):
+            if key=='four_hour':raise ValueError('Unavailable')
+            return candles()
+        with patch.object(web,'get_coin',return_value=self.coin),patch.object(web,'get_candles',side_effect=get):
+            data=self.client.get('/api/exit?symbol=TESTTRY&frames=five_minute,four_hour').get_json()
+            self.assertEqual(set(data['frames']),{'five_minute'})
+            self.assertEqual(data['errors'][0]['frame'],'four_hour')
+
+    def test_exit_missing_data_is_not_safe_signal(self):
+        with patch.object(web,'get_coin',return_value=self.coin),patch.object(web,'get_candles',side_effect=ValueError('Unavailable')):
+            self.assertEqual(self.client.get('/api/exit?symbol=TESTTRY&frames=one_hour').status_code,503)
+
     def test_dashboard_per_symbol_timestamps(self):
         with patch.object(web,'current_markets',return_value=[self.coin]):
             data=self.client.get('/api/dashboard').get_json()

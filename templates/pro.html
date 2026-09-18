@@ -15,6 +15,7 @@
       <button class="nav active" data-page="home">⌂ <span>Ana Sayfa</span></button>
       <button class="nav" data-page="radar">◉ <span>Teknik Radar</span></button>
       <button class="nav" data-page="positions">▣ <span>Pozisyonlarım</span></button>
+      <button class="nav" data-page="exits">↘ <span>Satış Takibi</span></button>
       <button class="nav" data-page="market">↗ <span>Piyasa Hareketi</span></button>
     </nav>
     <div class="sidebar-foot">Fiyatlar ayrı, sinyaller kapanmış mumlarla güncellenir.<br>3/5 aday · 5/5 teyit<br>Gerçek borsa emri gönderilmez.</div>
@@ -54,6 +55,11 @@
         <div class="market-columns"><section class="panel"><small class="positive">YÜKSELENLER</small><h2>En çok yükselen 5</h2><div id="gainers"></div></section><section class="panel"><small class="negative">DÜŞENLER</small><h2>En çok düşen 5</h2><div id="losers"></div></section></div>
         <section class="panel market-search"><small>TEK COIN ANALİZİ</small><h2>İstediğin coini incele</h2><label for="market-search-input">Coin / TRY</label><div class="search-line"><input id="market-search-input" list="market-symbols" placeholder="WIF/TRY veya WIF" autocomplete="off"><datalist id="market-symbols"></datalist><button id="market-search-button">ANALİZ ET</button></div><p id="market-frames" class="muted"></p><button class="link" data-goto="radar">Periyotları değiştir</button><p id="market-search-message" role="status"></p><div id="favorites" class="favorites"></div></section>
         <div id="market-analysis"></div>
+      </section>
+      <section class="page" id="page-exits">
+        <div class="callout"><b>Açık sanal işlemlerin otomatik satış takibi</b><span>EMA8 altı kapanış · MACD mavi çizginin kırmızı altına kesişimi / düşüşü · Fisher30 aşağı kesişimi / düşüşü · RSI10'un 50 altında düşüşü. MACD'nin sıfır altına inmesi beklenmez. 1/4 erken uyarı, 2/4 zayıflama, 3–4/4 satış uyarısıdır; bunlar deneysel eşiklerdir, kazanç olasılığı değildir.</span></div>
+        <div class="section-head"><div><h2>Satış Takibi</h2><p class="muted">Pozisyon açılınca otomatik başlar; kapanınca listeden çıkar. İşlem açarken seçilen periyotlar kullanılır; eski kayıtlarda 1 saat varsayılır. Sayfa açıkken yaklaşık dakikada bir kontrol edilir. Otomatik satış yoktur.</p></div><button id="refresh-exits">YENİLE</button></div>
+        <p id="exit-monitor-status" class="muted" role="status"></p><div id="exit-grid" class="radar-grid"></div>
       </section>
       <section class="page" id="page-positions">
         <section class="section-head"><div><small>SANAL PORTFÖY</small><h2>Pozisyonlarım</h2></div></section><div id="position-page-list" class="positions"></div>

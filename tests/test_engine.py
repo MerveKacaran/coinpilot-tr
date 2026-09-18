@@ -70,6 +70,44 @@ class IndicatorTests(unittest.TestCase):
         self.assertTrue(s['meets_minimum']);self.assertFalse(s['can_open_trade'])
 
 
+class ExitTests(unittest.TestCase):
+    def assess(self,**kwargs):
+        args=dict(closes=[100,101,102],ema8=[99,100,101],rsis=[55,56,57],
+                  macd=[1,2,3],trigger=[.5,1,2],fish=[1,2,3],fish_trigger=[0,1,2])
+        args.update(kwargs)
+        return engine.exit_conditions(**args)
+
+    def test_positive_macd_down_cross_warns_without_zero_cross(self):
+        result=self.assess(macd=[3,4,3],trigger=[2,3,3.5])
+        self.assertTrue(result['macd_cross_down'])
+        self.assertTrue(result['checks'][1]['ok'])
+        self.assertGreater(result['checks'][1]['value'],0)
+        self.assertEqual(result['count'],1)
+        self.assertEqual(result['stage'],'ERKEN UYARI')
+
+    def test_recovered_macd_is_not_stale_sell_cross(self):
+        self.assertFalse(self.assess(macd=[5,3,4],trigger=[4,4,3.5])['checks'][1]['ok'])
+
+    def test_all_four_bearish_conditions(self):
+        result=self.assess(closes=[104,102,99],ema8=[103,102,100],rsis=[52,51,49],
+                           macd=[3,2,1],trigger=[2,2,1.5],fish=[1,.5,.2],fish_trigger=[1,.8,.5])
+        self.assertEqual(result['count'],4)
+        self.assertEqual(result['stage'],'SATIŞ UYARISI')
+
+    def test_no_conditions_does_not_claim_sell(self):
+        self.assertEqual(self.assess()['count'],0)
+        self.assertEqual(self.assess()['stage'],'ÇIKIŞ TEYİDİ YOK')
+
+    def test_ema8_not_ema200_is_exit_reference(self):
+        result=self.assess(closes=[100,100,99],ema8=[100,100,100])
+        self.assertTrue(result['checks'][0]['ok'])
+        self.assertEqual(result['checks'][0]['label'],'EMA8')
+
+    def test_two_conditions_report_weakening(self):
+        result=self.assess(closes=[100,100,99],ema8=[100,100,100],rsis=[51,50,49])
+        self.assertEqual(result['stage'],'ZAYIFLAMA')
+
+
 class BacktestTests(unittest.TestCase):
     def test_stop_first_and_costs(self):
         c=candles(211);c['o'][-1]=100;c['h'][-1]=110;c['l'][-1]=90;c['c'][-1]=105
