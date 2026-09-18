@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>CoinPilot TR · Teknik Radar</title>
+  <link id="app-favicon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/pro.css') }}?v={{ version }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/upgrade.css') }}?v={{ version }}">
   <script defer src="{{ url_for('static', filename='js/pro.js') }}?v={{ version }}"></script>
@@ -67,7 +68,9 @@
         <section class="section-head"><div><small>GERÇEKLEŞEN SANAL İŞLEMLER</small><h2>İşlem geçmişi</h2></div><b id="realized-profit"></b></section>
         <div class="table-wrap"><table><thead><tr><th>Tarih</th><th>Coin</th><th>Giriş</th><th>Satış</th><th>Net K/Z</th></tr></thead><tbody id="history"></tbody></table></div>
       </section>
-      <section class="panel alerts-panel"><div class="section-head"><div><small>UYGULAMA İÇİ ALARMLAR</small><h2>Son değişiklikler</h2></div><label class="toggle"><input type="checkbox" id="alerts-enabled" checked> Açık</label></div><p class="muted">Sayfa açık ve bağlıyken 90/100 ve üzeri AL adayları, açık işlemin net zarara geçişi, %2 / %5 zarar eşikleri, hedef/stop ve satış teyitleri bildirilir. Puan kazanma olasılığı değildir. Otomatik işlem yapılmaz.</p><button id="sound-toggle" type="button" aria-pressed="false">SESLİ BİLDİRİMLERİ AÇ</button><p id="sound-status" class="muted" role="status">Ses için her sayfa açılışında düğmeye bir kez bas. Bildirimler ekranda ve aşağıdaki listede görünür; arka planda çalışacağı garanti edilmez.</p><div id="alerts-list" aria-live="polite"></div></section>
+      <section class="panel alerts-panel"><div class="section-head"><div><small>UYGULAMA İÇİ ALARMLAR</small><h2>Son değişiklikler</h2></div><label class="toggle"><input type="checkbox" id="alerts-enabled" checked> Açık</label></div><p class="muted">Sayfa açık ve bağlıyken 90/100 ve üzeri AL adayları, açık işlemin net zarara geçişi, %2 / %5 zarar eşikleri, hedef/stop ve satış teyitleri bildirilir. Puan kazanma olasılığı değildir. Otomatik işlem yapılmaz.</p>
+        <div class="sound-controls"><button id="sound-toggle" type="button" aria-pressed="false">SESLİ BİLDİRİMLERİ AÇ</button><button id="sound-resume" class="hidden" type="button">SESİ ETKİNLEŞTİR</button><button id="sound-test" type="button" disabled>SESİ DENE</button><label for="sound-volume">Ses düzeyi <output id="sound-volume-value" for="sound-volume">%70</output><input id="sound-volume" type="range" min="10" max="100" step="5" value="70"></label></div>
+        <p id="sound-status" class="muted" role="status">Ses tercihi yükleniyor…</p><p class="muted">Tercihin sen kapatana kadar bu tarayıcıda saklanır. Başka sekmedeyken yeni bildirimler sekme simgesinde ve başlıkta gösterilir. Tarayıcı sekmeyi uyutursa veya sayfayı kapatırsan bildirimler durabilir. Bildirime tıklayarak coinin analizine git.</p><p class="signal-legend"><span class="signal-buy-text">● AL</span><span class="signal-sell-text">● SAT</span><span class="stale">● RİSK</span></p><div id="alerts-list" aria-live="polite"></div></section>
     </main>
     <footer>CoinPilot TR · Sürüm {{ version }} · Developed by <b>Merve Kaçaranlıoğlu Topçu</b><br>Teknik sinyaller yatırım tavsiyesi değildir.</footer>
   </section>

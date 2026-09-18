@@ -1,4 +1,8 @@
-# CoinPilot TR 4.2.1
+# CoinPilot TR 4.2.2
+
+4.2.2: Daha belirgin, yaklaşık bir saniyelik dört tonlu bildirim sesi ve %10–100 ses ayarı eklendi. Ses açık/kapalı tercihi ve düzeyi localStorage ile yenilemede korunur. Autoplay engeli tercihi kapatmaz; kullanıcıya etkinleştirme düğmesi sunulur ve sonraki kullanıcı etkileşiminde ses yeniden denenir. Bu, tarayıcı/işletim sistemi ses izinlerini atlatmaz.
+
+Kullanıcının renk tercihiyle AL kırmızı, SAT yeşil kutucuk ve bildirim olarak gösterilir; risk uyarıları sarıdır, kâr/zarar renkleri değişmez. Coin içeren bildirimlere ve oturum bildirim geçmişine tıklamak doğrudan o coinin piyasa analizini açar; herhangi bir işlem gerçekleştirmez. Gizli sekmede bildirim türüne göre favicon işareti ve başlık sayacı gösterilir, geri dönünce temizlenir. Gizli sekmede fiyat kontrolü yaklaşık 15 saniyede, satış analiz kontrolü 15 saniyede (analiz önbelleği 60 saniye) sürer. Tarayıcı arka plan kısıtlamaları nedeniyle uyutulan/kapalı sekmede çalışma garantisi yoktur; sistem push bildirimi değildir.
 
 4.2.1: Menü sayfaları açıldığında kaydırma konumu başa alınır; tarayıcının önceki alt konumu yükleme/yenilemede geri getirmesi kapatılır. Detay ve işlem pencereleri tekrar açıldığında da baştan gösterilir. Periyodik fiyat/analiz yenilemeleri kullanıcının kaydırma konumunu sıfırlamaz.
 

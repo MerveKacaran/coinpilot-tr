@@ -9,7 +9,7 @@ async function run(){
   const context=await browser.newContext({viewport:{width:1440,height:1000}}),page=await context.newPage();
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto('https://coinpilot-tr.onrender.com/',{waitUntil:'domcontentloaded',timeout:60000});
-  assert.match(await page.locator('footer').textContent(),/4\.2\.1/);
+  assert.match(await page.locator('footer').textContent(),/4\.2\.2/);
   assert.equal(await page.locator('#sound-toggle').getAttribute('aria-pressed'),'false');
   for(const name of ['radar','positions','exits','market','home']){
     await page.evaluate(()=>window.scrollTo(0,document.documentElement.scrollHeight));
