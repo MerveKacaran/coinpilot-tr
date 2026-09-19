@@ -33,6 +33,26 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(self.client.get('/api/quote?symbol=TESTTRY').status_code,200)
             get.assert_called_once_with('TEST/TRY',True)
 
+    def test_position_targets_are_independent_frames(self):
+        def scan(coin,keys):
+            key=keys[0]
+            self.assertEqual(len(keys),1)
+            return dict(target={'fifteen_minute':110,'one_hour':120,'daily':150}[key],stop=90,
+                        frames={key:{'closed_at':100}},analyzed_at=web.iso())
+        with patch.object(web,'get_coin',return_value=self.coin),patch.object(web,'scan_coin',side_effect=scan):
+            response=self.client.get('/api/targets?symbol=TEST/TRY')
+            self.assertEqual(response.status_code,200)
+            d=response.get_json();self.assertEqual(d['frames']['daily']['target'],150)
+            self.assertEqual(d['frames']['fifteen_minute']['target'],110)
+
+    def test_position_targets_partial_failure_is_visible(self):
+        def scan(coin,keys):
+            if keys[0]=='daily':raise ValueError('Missing')
+            return dict(target=None,stop=None,frames={keys[0]:{'closed_at':100}},analyzed_at=web.iso())
+        with patch.object(web,'get_coin',return_value=self.coin),patch.object(web,'scan_coin',side_effect=scan):
+            d=self.client.get('/api/targets?symbol=TEST/TRY').get_json()
+            self.assertEqual(d['errors'][0]['frame'],'daily');self.assertIsNone(d['frames']['one_hour']['target'])
+
     def test_exit_endpoint_tracks_saved_frames(self):
         with patch.object(web,'get_coin',return_value=self.coin),patch.object(web,'get_candles',return_value=candles()):
             response=self.client.get('/api/exit?symbol=TESTTRY&frames=five_minute,four_hour')

@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 import ccxt
 import websocket
 from flask import Flask, jsonify, render_template, request
+from coinpilot_path import path_window, parse_path
 from coinpilot_engine import VERSION, FRAME_SPECS, validate_candles, analyse_frame, build_signal, backtest
 
 app=Flask(__name__)
@@ -22,6 +23,7 @@ market_lock=threading.RLock()
 rest_lock=threading.Lock()
 cache_lock=threading.RLock()
 markets={}; candle_cache={}; radar_cache={}
+path_cache={}
 graph_requests=deque()
 rest_at=0.0; ws_last=0.0; ws_connected=False; ws_started=False
 STABLE_ASSETS={'USDT','USDC','FDUSD','TUSD','DAI'}
@@ -226,7 +228,7 @@ def no_stale_api(response):
 
 
 @app.get('/')
-def home():return render_template('pro.html',version=VERSION)
+def home():return render_template('pro.html',version='4.3.1',rules_version=VERSION)
 
 
 @app.get('/api/dashboard')
@@ -289,6 +291,28 @@ def radar():
     except ValueError as exc:return jsonify(status='error',message=str(exc)),400
 
 
+@app.get('/api/targets')
+def position_targets():
+    """Separate single-frame targets; never replace a saved position plan."""
+    symbol=canonical_symbol(request.args.get('symbol'))
+    if not symbol:return jsonify(status='error',message='Geçerli TRY paritesi seç.'),400
+    try:
+        coin=get_coin(symbol)
+        age=time.time()-datetime.fromisoformat(coin['price_updated_at'].replace('Z','+00:00')).timestamp()
+        if not -5<=age<=30:raise ValueError('Fiyat gecikmiş.')
+    except Exception:return jsonify(status='error',message='Hedef analizi için fiyat alınamadı.'),503
+    frames={};errors=[]
+    for key in ('fifteen_minute','one_hour','daily'):
+        try:
+            result=scan_coin(coin,(key,))
+            frames[key]=dict(name=FRAME_SPECS[key][0],target=result['target'],stop=result['stop'],
+                             closed_at=result['frames'][key]['closed_at'],analyzed_at=result['analyzed_at'])
+        except Exception:
+            errors.append(dict(frame=key,message='Bu periyot için yeterli güncel veri alınamadı.'))
+    if not frames:return jsonify(status='error',message='Periyot hedefleri doğrulanamadı.',errors=errors),503
+    return jsonify(status='success',symbol=symbol,frames=frames,errors=errors,analyzed_at=iso(),rules_version=VERSION)
+
+
 @app.get('/api/exit')
 def exit_monitor():
     try:
@@ -333,6 +357,41 @@ def test_strategy():
 def live_status():
     return jsonify(status='online',version=VERSION,websocket_connected=ws_connected,
                    last_message_seconds=round(time.monotonic()-ws_last,1) if ws_last else None,tracked_pairs=len(markets))
+
+
+@app.get('/api/price-path')
+def price_path():
+    """600 minutes per page, at most 30 days back. No portfolio sent or stored."""
+    try:
+        symbol=canonical_symbol(request.args.get('symbol'))
+        if not symbol:raise ValueError('Geçerli TRY paritesi seç.')
+        now=time.time()
+        start,end,clipped=path_window(float(request.args.get('from','nan')),now)
+        key=(symbol,start,end)
+        with cache_lock:
+            cached=path_cache.get(key)
+            if cached and time.monotonic()-cached[0]<60:
+                return jsonify(status='success',symbol=symbol,**{**cached[1],'clipped':clipped,'complete':cached[1]['missing_minutes']==0 and not clipped})
+            moment=time.monotonic()
+            while graph_requests and moment-graph_requests[0]>=600:graph_requests.popleft()
+            if len(graph_requests)>=500:
+                return jsonify(status='error',message='Geçmiş fiyat istek sınırı; biraz sonra yeniden denenecek.'),429
+            graph_requests.append(moment)
+        data={'s':'no_data'}
+        if end>start:
+            query=urlencode(dict(symbol=symbol.replace('/',''),resolution=1,**{'from':start-60,'to':end-1}))
+            req=Request('https://graph-api.btcturk.com/v1/klines/history?'+query,headers={'User-Agent':'CoinPilotTR/'+VERSION})
+            with urlopen(req,timeout=12) as response:data=json.loads(response.read())
+        result=parse_path(data,start,end,clipped)
+        result['has_more']=end<int(now//60)*60
+        with cache_lock:
+            if len(path_cache)>=128:path_cache.pop(next(iter(path_cache)))
+            path_cache[key]=(time.monotonic(),result)
+        return jsonify(status='success',symbol=symbol,**result)
+    except (ValueError,TypeError) as exc:return jsonify(status='error',message=str(exc)),400
+    except Exception:
+        app.logger.warning('Pozisyon geçmişi alınamadı.',exc_info=True)
+        return jsonify(status='error',message='Geçmiş doğrulanamadı; hedefe gelmediği anlamına gelmez.'),503
 
 
 if __name__=='__main__':app.run(host='0.0.0.0',port=int(os.environ.get('PORT','10000')),threaded=True)
