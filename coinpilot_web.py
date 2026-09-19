@@ -26,6 +26,7 @@ markets={}; candle_cache={}; radar_cache={}
 path_cache={}
 graph_requests=deque()
 rest_at=0.0; ws_last=0.0; ws_connected=False; ws_started=False
+rest_refreshing=False; rest_attempt_at=0.0; rest_error=None; rest_completed_at=None
 STABLE_ASSETS={'USDT','USDC','FDUSD','TUSD','DAI'}
 DEFAULT_FRAME_KEYS=('one_hour',)
 
@@ -135,27 +136,43 @@ def feed_worker():
         time.sleep(5)
 
 
+def refresh_market_snapshot():
+    """Only one background REST refresh; HTTP workers never queue behind it."""
+    global rest_refreshing,rest_error,rest_completed_at
+    try:
+        rest_seed()
+        with market_lock:rest_error=None
+    except Exception as exc:
+        with market_lock:rest_error=type(exc).__name__
+        app.logger.warning('Arka plan fiyat yenilemesi başarısız: %s',type(exc).__name__)
+    finally:
+        with market_lock:
+            rest_refreshing=False;rest_completed_at=iso()
+
+
 def current_markets():
-    global ws_started
+    global ws_started,rest_refreshing,rest_attempt_at
     with market_lock:
         if not ws_started:
             ws_started=True
             threading.Thread(target=feed_worker,daemon=True).start()
-        due=not markets or time.monotonic()-rest_at>(300 if ws_connected and time.monotonic()-ws_last<30 else 10)
-    if due:
-        try:rest_seed()
-        except Exception:
-            with market_lock:
-                if not markets:raise
-            app.logger.warning('REST yenilenemedi; son fiyatların zamanı korunuyor.')
-    with market_lock:return [dict(v) for v in markets.values()]
+        moment=time.monotonic()
+        due=not markets or moment-rest_at>(300 if ws_connected and moment-ws_last<30 else 10)
+        if due and not rest_refreshing and (not rest_attempt_at or moment-rest_attempt_at>=10):
+            rest_refreshing=True;rest_attempt_at=moment
+            threading.Thread(target=refresh_market_snapshot,daemon=True).start()
+        values=[dict(v) for v in markets.values()]
+    if not values:raise RuntimeError('Canlı fiyat akışı hazırlanıyor; otomatik yeniden denenecek.')
+    return values
 
 
 def get_coin(symbol,fresh=False):
     coin=next((x for x in current_markets() if x['symbol']==symbol),None)
     if not coin:raise ValueError('Bu BtcTurk TRY paritesi bulunamadı.')
     if fresh:
-        with rest_lock:coin=make_ticker(symbol,exchange.fetch_ticker(symbol))
+        if not rest_lock.acquire(timeout=1):raise RuntimeError('Güncel fiyat doğrulaması meşgul; biraz sonra yeniden dene.')
+        try:coin=make_ticker(symbol,exchange.fetch_ticker(symbol))
+        finally:rest_lock.release()
         with market_lock:markets[symbol]={**markets.get(symbol,{}),**coin}
     return public_market(coin)
 
@@ -228,7 +245,7 @@ def no_stale_api(response):
 
 
 @app.get('/')
-def home():return render_template('pro.html',version='4.3.1',rules_version=VERSION)
+def home():return render_template('pro.html',version='4.3.2',rules_version=VERSION)
 
 
 @app.get('/api/dashboard')
@@ -241,7 +258,7 @@ def dashboard():
                        prices={v['symbol']:v['price'] for v in values},quotes={v['symbol']:public_market(v) for v in values},
                        gainers=[public_market(v) for v in sorted(values,key=lambda x:x['change'],reverse=True)[:5]],
                        losers=[public_market(v) for v in sorted(values,key=lambda x:x['change'])[:5]])
-    except Exception:return jsonify(status='error',message='BtcTurk fiyatlarına ulaşılamadı.'),503
+    except Exception:return jsonify(status='error',message='Canlı fiyat akışı henüz hazır değil; arka planda yeniden deneniyor.'),503
 
 
 @app.get('/api/quote')
@@ -356,7 +373,8 @@ def test_strategy():
 @app.get('/api/live-status')
 def live_status():
     return jsonify(status='online',version=VERSION,websocket_connected=ws_connected,
-                   last_message_seconds=round(time.monotonic()-ws_last,1) if ws_last else None,tracked_pairs=len(markets))
+                   last_message_seconds=round(time.monotonic()-ws_last,1) if ws_last else None,tracked_pairs=len(markets),
+                   rest_refreshing=rest_refreshing,rest_last_error=rest_error,rest_completed_at=rest_completed_at)
 
 
 @app.get('/api/price-path')

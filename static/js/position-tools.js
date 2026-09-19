@@ -14,8 +14,8 @@ function targetPanel(p){
   box.append(btn('HEDEFLERİ YENİLE','link',()=>{if(targetCache.has(symbolOf(p)))targetCache.get(symbolOf(p)).at=0;loadPositionTargets();}));return box;
 }
 async function loadPositionTargets(){
-  if(targetsBusy)return;targetsBusy=true;
-  const pending=[...new Set(state.positions.map(symbolOf))].filter(s=>Date.now()-(targetCache.get(s)?.at||0)>180000);
+  if(targetsBusy||!Object.values(state.quotes).some(isFresh))return;targetsBusy=true;
+  const pending=[...new Set(state.positions.map(symbolOf))].filter(s=>Date.now()-(targetCache.get(s)?.at||0)>(targetCache.get(s)?.error?15000:180000));
   async function worker(){while(pending.length){const symbol=pending.shift();try{const data=await api('/api/targets',{symbol},60000);if(data.symbol!==symbol)throw Error('Hedef paritesi doğrulanamadı.');targetCache.set(symbol,{data,at:Date.now()});}catch(e){targetCache.set(symbol,{...targetCache.get(symbol),error:e.message,at:Date.now()});}renderPortfolio();}}
   try{await Promise.all([worker(),worker()]);}finally{targetsBusy=false;}
 }

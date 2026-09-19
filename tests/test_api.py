@@ -33,6 +33,35 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(self.client.get('/api/quote?symbol=TESTTRY').status_code,200)
             get.assert_called_once_with('TEST/TRY',True)
 
+    def test_slow_rest_refresh_is_not_run_in_http_worker(self):
+        with patch.dict(web.markets,{'TEST/TRY':self.coin},clear=True),patch.object(web,'ws_started',True),patch.object(web,'rest_at',0),patch.object(web,'rest_attempt_at',0),patch.object(web,'rest_refreshing',False),patch.object(web.threading,'Thread') as thread,patch.object(web,'rest_seed') as seed:
+            for _ in range(12):self.assertEqual(web.current_markets()[0]['symbol'],'TEST/TRY')
+            seed.assert_not_called();self.assertEqual(thread.call_count,1)
+            self.assertTrue(web.rest_refreshing)
+
+    def test_empty_market_warms_in_background_without_request_queue(self):
+        with patch.dict(web.markets,{},clear=True),patch.object(web,'ws_started',True),patch.object(web,'rest_attempt_at',0),patch.object(web,'rest_refreshing',False),patch.object(web.threading,'Thread') as thread:
+            for _ in range(8):
+                with self.assertRaises(RuntimeError):web.current_markets()
+            self.assertEqual(thread.call_count,1)
+
+    def test_failed_refresh_preserves_quote_timestamp(self):
+        with patch.dict(web.markets,{'TEST/TRY':self.coin},clear=True),patch.object(web,'rest_seed',side_effect=TimeoutError),patch.object(web,'rest_refreshing',True),patch.object(web,'rest_error',None),patch.object(web,'rest_completed_at',None):
+            web.refresh_market_snapshot()
+            self.assertFalse(web.rest_refreshing);self.assertEqual(web.rest_error,'TimeoutError')
+            self.assertEqual(web.markets['TEST/TRY']['price_updated_at'],self.coin['price_updated_at'])
+
+    def test_trade_price_lock_is_bounded(self):
+        with patch.object(web,'current_markets',return_value=[self.coin]),patch.object(web,'rest_lock') as lock:
+            lock.acquire.return_value=False
+            with self.assertRaises(RuntimeError):web.get_coin('TEST/TRY',True)
+            lock.acquire.assert_called_once_with(timeout=1);lock.release.assert_not_called()
+
+    def test_liveness_reports_feed_errors_without_contacting_exchange(self):
+        with patch.object(web,'rest_error','TimeoutError'),patch.object(web,'current_markets') as current:
+            d=self.client.get('/api/live-status').get_json()
+            self.assertEqual(d['rest_last_error'],'TimeoutError');current.assert_not_called()
+
     def test_position_targets_are_independent_frames(self):
         def scan(coin,keys):
             key=keys[0]
