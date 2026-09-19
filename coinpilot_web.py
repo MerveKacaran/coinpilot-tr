@@ -5,7 +5,8 @@ import os
 import threading
 import time
 from collections import deque
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from urllib.error import URLError, HTTPError
 from datetime import datetime, timezone
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -24,6 +25,12 @@ rest_lock=threading.Lock()
 cache_lock=threading.RLock()
 markets={}; candle_cache={}; radar_cache={}
 path_cache={}
+candle_inflight={}
+candle_slots=threading.BoundedSemaphore(3)
+
+
+class CandleTemporaryError(RuntimeError):
+    """A transport/busy failure that radar may retry, never an indicator result."""
 graph_requests=deque()
 rest_at=0.0; ws_last=0.0; ws_connected=False; ws_started=False
 rest_refreshing=False; rest_attempt_at=0.0; rest_error=None; rest_completed_at=None
@@ -184,22 +191,46 @@ def get_candles(pair,key,count=450):
         cached=candle_cache.get(cache_key)
         # Analysis only uses closed candles, so a result is stable until the next close.
         if cached:return cached[1]
-        moment=time.monotonic()
-        while graph_requests and moment-graph_requests[0]>=600:graph_requests.popleft()
-        # Leave headroom below the provider's 600 requests / 10 minute limit.
-        if len(graph_requests)>=500:raise ValueError('Mum veri istek sınırına yaklaşıldı; kapsamı daralt veya birkaç dakika sonra dene.')
-        graph_requests.append(moment)
-    query=urlencode(dict(symbol=pair,resolution=resolution,**{'from':now-(count+10)*duration,'to':now}))
-    req=Request('https://graph-api.btcturk.com/v1/klines/history?'+query,headers={'User-Agent':'CoinPilotTR/'+VERSION})
-    with urlopen(req,timeout=12) as response:data=json.loads(response.read())
-    if data.get('s')!='ok':raise ValueError('Mum geçmişi bulunamadı.')
-    candles=validate_candles(data,duration,now)
-    with cache_lock:
-        if len(candle_cache)>1000:
-            for old in list(candle_cache):
-                if old[3]!=now//FRAME_SPECS[old[1]][2]:candle_cache.pop(old)
-        candle_cache[cache_key]=(time.monotonic(),candles)
-    return candles
+        pending=candle_inflight.get(cache_key)
+        owner=pending is None
+        if owner:pending=Future();candle_inflight[cache_key]=pending
+    if not owner:
+        try:return pending.result(timeout=12)
+        except TimeoutError as exc:raise CandleTemporaryError('Mum isteği hâlâ bekleniyor; radar yeniden deneyecek.') from exc
+    try:
+        if not candle_slots.acquire(timeout=1):raise CandleTemporaryError('Mum veri kanalları meşgul; radar yeniden deneyecek.')
+        try:
+            with cache_lock:
+                moment=time.monotonic()
+                while graph_requests and moment-graph_requests[0]>=600:graph_requests.popleft()
+                if len(graph_requests)>=500:raise ValueError('Mum veri istek sınırı; birkaç dakika sonra yeniden dene.')
+                graph_requests.append(moment)
+            query=urlencode(dict(symbol=pair,resolution=resolution,**{'from':now-(count+10)*duration,'to':now}))
+            req=Request('https://graph-api.btcturk.com/v1/klines/history?'+query,headers={'User-Agent':'CoinPilotTR/'+VERSION})
+            try:
+                with urlopen(req,timeout=8) as response:data=json.loads(response.read())
+            except HTTPError as exc:
+                if exc.code==429:raise ValueError('BtcTurk mum istek sınırı; sonraki taramada yeniden denenecek.') from exc
+                if exc.code>=500:raise CandleTemporaryError('BtcTurk mum sunucusu geçici olarak yanıt veremiyor.') from exc
+                raise ValueError('BtcTurk mum isteği reddedildi (HTTP '+str(exc.code)+').') from exc
+            except (TimeoutError,URLError,OSError) as exc:
+                raise CandleTemporaryError('BtcTurk mum bağlantısı zaman aşımı / erişim sorunu.') from exc
+            if data.get('s')!='ok':raise ValueError('Bu parite için mum geçmişi bulunamadı.')
+            candles=validate_candles(data,duration,int(time.time()))
+        finally:candle_slots.release()
+        with cache_lock:
+            if len(candle_cache)>=1000:
+                for old in list(candle_cache):
+                    if old[3]!=now//FRAME_SPECS[old[1]][2]:candle_cache.pop(old)
+                if len(candle_cache)>=1000:candle_cache.pop(next(iter(candle_cache)))
+            candle_cache[cache_key]=(time.monotonic(),candles)
+        pending.set_result(candles)
+        return candles
+    except Exception as exc:
+        pending.set_exception(exc)
+        raise
+    finally:
+        with cache_lock:candle_inflight.pop(cache_key,None)
 
 
 def scan_coin(coin,keys):
@@ -219,23 +250,29 @@ def run_radar(cache_key,keys,limit,symbols):
         if symbols:values=[v for v in values if v['symbol'] in symbols]
         ranked=sorted(values,key=lambda x:x.get('volume_try',0),reverse=True)
         candidates=ranked if limit==250 else ranked[:limit]
-        with cache_lock:radar_cache[cache_key].update(total=len(candidates),market_count=len(values))
-        with ThreadPoolExecutor(max_workers=3) as pool:
-            jobs={pool.submit(scan_coin,coin,keys):coin['symbol'] for coin in candidates}
-            for future in as_completed(jobs):
-                try:
-                    item=future.result()
+        with cache_lock:radar_cache[cache_key].update(total=len(candidates),market_count=len(values),phase='scanning',successful=0)
+        successes={};failures={};retry=[]
+        def scan_batch(batch,second=False):
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                jobs={pool.submit(scan_coin,coin,keys):coin for coin in batch}
+                for future in as_completed(jobs):
+                    coin=jobs[future];symbol=coin['symbol']
+                    try:
+                        successes[symbol]=future.result();failures.pop(symbol,None)
+                    except Exception as exc:
+                        failures[symbol]=dict(symbol=symbol,message=str(exc)[:160],retryable=isinstance(exc,CandleTemporaryError))
+                        if not second and isinstance(exc,CandleTemporaryError):retry.append(coin)
                     with cache_lock:
-                        state=radar_cache[cache_key]
-                        state['scanned']+=1
-                        if item['meets_minimum']:state['items'].append(item)
-                except Exception as exc:
-                    with cache_lock:
-                        state=radar_cache[cache_key];state['scanned']+=1
-                        state['errors'].append(dict(symbol=jobs[future],message=str(exc)[:160]))
-        with cache_lock:radar_cache[cache_key].update(scanning=False,updated_at=iso(),at=time.monotonic())
+                        radar_cache[cache_key].update(scanned=len(successes)+len(failures),successful=len(successes),
+                            items=[s for s in successes.values() if s['meets_minimum']],errors=list(failures.values()))
+        scan_batch(candidates)
+        if retry:
+            with cache_lock:radar_cache[cache_key].update(phase='retrying',retry_count=len(retry))
+            time.sleep(2)
+            scan_batch(retry,True)
+        with cache_lock:radar_cache[cache_key].update(scanning=False,phase='done',coverage='complete' if not failures else 'partial' if successes else 'unavailable',updated_at=iso(),at=time.monotonic())
     except Exception as exc:
-        with cache_lock:radar_cache[cache_key].update(scanning=False,error=str(exc)[:160],at=time.monotonic())
+        with cache_lock:radar_cache[cache_key].update(scanning=False,phase='done',coverage='unavailable',error=str(exc)[:160],at=time.monotonic())
 
 
 @app.after_request
@@ -245,7 +282,7 @@ def no_stale_api(response):
 
 
 @app.get('/')
-def home():return render_template('pro.html',version='4.3.2',rules_version=VERSION)
+def home():return render_template('pro.html',version='4.3.3',rules_version=VERSION)
 
 
 @app.get('/api/dashboard')
@@ -294,13 +331,13 @@ def radar():
         key=(keys,limit,symbols)
         with cache_lock:
             cached=radar_cache.get(key)
-            if not cached or (not cached['scanning'] and (request.args.get('force')=='1' or time.monotonic()-cached['at']>60)):
+            if not cached or (not cached['scanning'] and (request.args.get('force')=='1' or time.monotonic()-cached['at']>(10 if cached.get('coverage')=='unavailable' and not cached.get('errors') else 60))):
                 if sum(x['scanning'] for x in radar_cache.values())>=2:
                     return jsonify(status='busy',message='Bir tarama sürüyor; kısa süre sonra yeniden denenecek.'),429
                 if len(radar_cache)>64:
                     for old in list(radar_cache):
                         if not radar_cache[old]['scanning']:radar_cache.pop(old)
-                cached=dict(items=[],scanning=True,scanned=0,total=0,errors=[],updated_at=None,at=time.monotonic(),market_count=0)
+                cached=dict(items=[],scanning=True,scanned=0,successful=0,total=0,phase='scanning',coverage='pending',retry_count=0,errors=[],updated_at=None,at=time.monotonic(),market_count=0)
                 radar_cache[key]=cached
                 threading.Thread(target=run_radar,args=(key,keys,limit,symbols),daemon=True).start()
             data={**cached,'items':sorted(cached['items'],key=lambda x:x['score'],reverse=True),'errors':list(cached['errors'])}
