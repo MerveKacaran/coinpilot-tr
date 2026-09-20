@@ -1,7 +1,7 @@
 """Deterministic, closed-candle technical analysis. No network or order access."""
 import math
 
-VERSION = '4.2.3'
+VERSION = '4.5.0'
 FRAME_SPECS = {
     'daily': ('Günlük', 'D', 86400),
     'four_hour': ('4 Saat', '240', 14400),
@@ -9,7 +9,8 @@ FRAME_SPECS = {
     'fifteen_minute': ('15 Dakika', '15', 900),
     'five_minute': ('5 Dakika', '5', 300),
 }
-MAX_STOP_PCT = 8.0
+MAX_STOP_PCT = 5.0
+MIN_REWARD_RISK = 2.0
 
 
 def ema(values, period):
@@ -182,14 +183,20 @@ def levels(frame, price):
              support=min(lows[-30:]),resistance=max(highs[-30:]))
     above=sorted(x for x in (fib['resistance'],high,fib['1272']) if x>price)
     target=above[0] if above else None
-    stop=min(fib['786']*.992,fib['support']*.99)
-    if not 0<stop<price:
-        stop=None
-    risk=(price-stop)/price*100 if stop else None
     reward=(target-price)/price*100 if target else None
+    technical_stop=min(fib['786']*.992,fib['support']*.99)
+    if not 0<technical_stop<price:
+        technical_stop=None
+    # Capital-risk cap: never accept more than 5%, or more than half the
+    # available target reward. A closer technical stop is kept unchanged.
+    risk_cap=min(MAX_STOP_PCT,reward/MIN_REWARD_RISK) if reward and reward>0 else MAX_STOP_PCT
+    risk_floor=price*(1-risk_cap/100)
+    stop=max(technical_stop or 0,risk_floor) if technical_stop or target else None
+    risk=(price-stop)/price*100 if stop else None
     return dict(fib=fib,target=target,extended_target=above[-1] if above else None,stop=stop,
+                technical_stop=technical_stop,stop_adjusted=bool(stop and (technical_stop is None or stop>technical_stop)),
                 stop_pct=risk,target_pct=reward,risk_reward=reward/risk if risk and reward else None,
-                risk_ok=risk is not None and risk<=MAX_STOP_PCT and target is not None)
+                risk_cap_pct=risk_cap,risk_ok=risk is not None and risk<=risk_cap+1e-9 and target is not None)
 
 
 def build_signal(coin, frames):
@@ -256,4 +263,4 @@ def backtest(key,c,fee=.001,slippage=.001):
                 win_rate=sum(t['pnl']>0 for t in trades)/len(trades)*100 if trades else None,
                 max_drawdown_pct=drawdown,profit_factor=profit/loss if loss else None,
                 from_time=c['t'][210],to_time=c['t'][-1],bars=len(c['c'])-210,fee_pct=fee*100,slippage_pct=slippage*100,
-                note='Tek periyot; 5/5 kapanış teyidi, sonraki mum açılışı. Stop %8 sınırı. Aynı mumda hedef/stop varsa stop önce. Son pozisyon test sonunda kapatılır. Optimizasyon yapılmaz; geçmiş sonuç geleceği garanti etmez.')
+                note='Tek periyot; 5/5 kapanış teyidi, sonraki mum açılışı. Stop en fazla %5 ve hedef getirisinin yarısıdır. Aynı mumda hedef/stop varsa stop önce. Son pozisyon test sonunda kapatılır. Optimizasyon yapılmaz; geçmiş sonuç geleceği garanti etmez.')

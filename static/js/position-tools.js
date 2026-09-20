@@ -5,14 +5,18 @@ const pathDue=new Map(),pathErrors=new Map();
 const targetCache=new Map(),targetFrames=[['fifteen_minute','15 dakika'],['one_hour','Saatlik'],['daily','Günlük']];
 function targetPanel(p){
   const box=el('section','period-targets'),cached=targetCache.get(symbolOf(p));
-  box.append(el('b','','PERİYOT HEDEFLERİ · GÜNCEL ANALİZ'));
+  box.append(el('b','','PERİYOT HEDEF / STOP DURUMU · GÜNCEL ANALİZ'));
   for(const [key,label] of targetFrames){
-    const row=el('div','period-target-row'),f=cached?.data?.frames?.[key],known=positive(f?.target),reached=known&&Paper.targetReached(p,f.target);
-    const status=el('span',known?(reached?'target-status target-reached':'target-status target-missed'):'target-status target-unknown',known?(reached?'✓':'✕'):'—');
-    status.title=!known?'Hedef henüz hesaplanmadı.':reached?'İşlem açıldıktan sonra gözlenen en yüksek fiyat bu hedefe ulaştı.':p.tracking?.incomplete?'Doğrulanan kayıtlarda ulaşmadı; eksik aralık bulunduğu için kesin değildir.':'Doğrulanan kayıtlarda henüz ulaşmadı.';
-    row.append(el('span','',label),el('strong','',f?levelText(f.target,p.entry):(cached?.error?'Alınamadı':'Bekleniyor…')),status);box.append(row);
+    const row=el('div','period-target-row'),f=cached?.data?.frames?.[key];row.append(el('span','period-label',label));
+    for(const type of ['target','stop']){
+      const value=f?.[type],known=positive(value),reached=known&&(type==='target'?Paper.targetReached(p,value):Paper.stopReached(p,value));
+      const pair=el('div','period-level'),status=el('span',!known?'target-status target-unknown':type==='target'?(reached?'target-status target-reached':'target-status target-missed'):(reached?'target-status stop-reached':'target-status stop-safe'),known?(reached?'✓':'✕'):'—');
+      status.title=!known?(type==='target'?'Hedef':'Stop')+' henüz hesaplanmadı.':reached?(type==='target'?'Gözlenen en yüksek fiyat hedefe ulaştı.':'Gözlenen en düşük fiyat stopa ulaştı.'):p.tracking?.incomplete?'Doğrulanan kayıtlarda ulaşmadı; eksik aralık nedeniyle kesin değildir.':'Doğrulanan kayıtlarda henüz ulaşmadı.';
+      pair.append(el('small','',type==='target'?'Hedef':'Stop'),el('strong','',f?levelText(value,p.entry):(cached?.error?'Alınamadı':'Bekleniyor…')),status);row.append(pair);
+    }
+    box.append(row);
   }
-  box.append(el('small','muted','✓ Hedef görüldü · ✕ Henüz görülmedi. Durum, işlemden sonra gözlenen en yüksek fiyatla güncel hesaplanan hedefi karşılaştırır. Yüzdeler senin giriş fiyatına göredir; kayıtlı hedefi veya satış emrini değiştirmez.'));
+  box.append(el('small','muted','Hedefte yeşil ✓ ulaşıldı; kırmızı ✕ ulaşılmadı. Stopta kırmızı ✓ stop görüldü; yeşil ✕ stop görülmedi. Durum, işlemden sonra doğrulanan en yüksek/en düşük fiyatla karşılaştırılır. Yüzdeler giriş fiyatına göredir.'));
   if(cached?.data)box.append(el('small','muted','Analiz: '+timeText(cached.data.analyzed_at)));
   if(cached?.error)box.append(el('p','stale',cached.error+' Gösterilen eski hedefler güncel kabul edilmemeli.'));
   if(cached?.data?.errors?.length)box.append(el('p','stale',cached.data.errors.map(e=>(targetFrames.find(x=>x[0]===e.frame)?.[1]||e.frame)+': veri eksik').join(' · ')));

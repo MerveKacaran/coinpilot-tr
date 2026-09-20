@@ -16,6 +16,7 @@
     return true;
   }
   function targetReached(p,target){return positive(target)&&positive(p?.tracking?.high)&&p.tracking.high>=target;}
+  function stopReached(p,stop){return positive(stop)&&positive(p?.tracking?.low)&&p.tracking.low<=stop;}
   function levelHits(before,after){
     const hits=[];
     for(const key of ['targetHit','stopHit'])if(!before?.tracking?.[key]&&after?.tracking?.[key])hits.push(key==='targetHit'?'target':'stop');
@@ -115,5 +116,5 @@
     }
     return {positions:[...positions.values()],history};
   }
-  return {observe,reconcile,validExtras,settle,mergePortfolio,targetReached,levelHits,autoSaleReason};
+  return {observe,reconcile,validExtras,settle,mergePortfolio,targetReached,stopReached,levelHits,autoSaleReason};
 });

@@ -20,7 +20,7 @@ const assert=require('node:assert/strict');
     if(u.pathname==='/api/dashboard')d={...d,live:false,quotes:{'TEST/TRY':q()},gainers:[q()],losers:[q()]};
     else if(u.pathname==='/api/quote')d={...d,coin:q()};
     else if(u.pathname==='/api/radar')d={...d,items:[],scanning:false,scanned:0,total:0,errors:[]};
-    else if(u.pathname==='/api/targets')d={...d,symbol:'TEST/TRY',frames:{fifteen_minute:{target:111},one_hour:{target:120},daily:{target:150}},errors:[],analyzed_at:iso(now())};
+    else if(u.pathname==='/api/targets')d={...d,symbol:'TEST/TRY',frames:{fifteen_minute:{target:111,stop:90},one_hour:{target:120,stop:90},daily:{target:150,stop:90}},errors:[],analyzed_at:iso(now())};
     else if(u.pathname==='/api/exit')return route.fulfill({status:503,json:{status:'error',message:'Testte sinyal yok'}});
     else if(u.pathname==='/api/price-path'){
       const t=Math.floor((now()-600)/60)*60,from=Number(u.searchParams.get('from'));

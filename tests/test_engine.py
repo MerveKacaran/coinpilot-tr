@@ -64,6 +64,21 @@ class IndicatorTests(unittest.TestCase):
         self.assertIsNone(plan['target'])
         self.assertFalse(plan['risk_ok'])
 
+    def test_stop_is_capped_at_half_reward_and_five_percent(self):
+        frame={'highs':[70,105]+[104]*118,'lows':[69,70]+[70]*118}
+        plan=engine.levels(frame,100)
+        self.assertAlmostEqual(plan['target_pct'],4)
+        self.assertAlmostEqual(plan['stop_pct'],2)
+        self.assertGreaterEqual(plan['risk_reward'],2)
+        self.assertTrue(plan['stop_adjusted'])
+        self.assertLessEqual(plan['stop_pct'],5)
+
+    def test_closer_technical_stop_is_preserved(self):
+        frame={'highs':[100,110]+[99]*118,'lows':[99.9,100]+[99.9]*118}
+        plan=engine.levels(frame,100)
+        self.assertAlmostEqual(plan['stop'],plan['technical_stop'])
+        self.assertFalse(plan['stop_adjusted'])
+
     def test_strict_entry_versus_three_of_five_candidate(self):
         f=engine.analyse_frame('one_hour',candles());f['core_pass']=False;f['checks_passed']=3
         s=engine.build_signal({'price':106},{'one_hour':f})

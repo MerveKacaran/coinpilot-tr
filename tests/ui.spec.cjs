@@ -16,13 +16,14 @@ async function main(){const browser=await chromium.launch({headless:true,executa
     else if(u.pathname==='/api/analyze'){analyzeCalls++;if(delayFrame&&frames[0]==='one_hour')await new Promise(resolve=>setTimeout(resolve,500));data={status:'success',item:signal(frames,u.searchParams.get('fresh')==='1')};if(unsafeMode)Object.assign(data.item,{can_open_trade:false,all_frames_passed:false,risk_ok:false,sell_setup:true,action:'SAT',stop:unsafeMode===1?75:null,target:unsafeMode===1?110:null});}
     else if(u.pathname==='/api/quote'){if(failedQuote){await route.fulfill({status:503,json:{status:'error',message:'Fixture bağlantı hatası'}});return;}data={status:'success',coin:quote(quotePrice)};}
     else if(u.pathname==='/api/exit'){exitCalls++;data=exitFixture(frames);}
-    else if(u.pathname==='/api/targets')data={status:'success',symbol:'TEST/TRY',frames:{fifteen_minute:{target:108},one_hour:{target:110},daily:{target:115}},errors:[],analyzed_at:new Date().toISOString()};
+    else if(u.pathname==='/api/targets')data={status:'success',symbol:'TEST/TRY',frames:{fifteen_minute:{target:108,stop:98},one_hour:{target:110,stop:98},daily:{target:115,stop:98}},errors:[],analyzed_at:new Date().toISOString()};
     else if(u.pathname==='/api/price-path')data={status:'success',symbol:'TEST/TRY',candles:[],through:Math.floor(Date.now()/60000)*60,missing_minutes:0,clipped:false,has_more:false};
     else if(u.pathname==='/api/backtest')data={status:'success',frame:'five_minute',result:{bars:400,from_time:1700000000,to_time:1701000000,trade_count:10,net_return_pct:2,win_rate:60,max_drawdown_pct:3,profit_factor:1.3,note:'Kontrollü test'}};
     else throw Error('Unexpected API: '+u.pathname);
     await route.fulfill({json:data});
   });
   await page.goto(base);await page.locator('[data-page=radar]').click();await page.locator('#radar-grid .signal').waitFor();
+  await page.locator('#radar-grid').getByRole('button',{name:'☆ Takip et',exact:true}).first().click();await page.locator('[data-page=watchlist]').click();assert.match(await page.locator('#favorites-page-list').textContent(),/TEST\/TRY.*ANALİZ ET.*TAKİPTEN ÇIKAR/s);await page.locator('[data-page=radar]').click();
   for(const k of Object.keys(names)){for(const input of await page.locator('#timeframe-controls input').all())await input.uncheck();await page.locator('#timeframe-controls input[value='+k+']').check();await page.locator('#apply-timeframes').click();await page.waitForFunction(name=>document.querySelector('#radar-grid .frame')?.textContent.includes(name),names[k]);assert.match(await page.locator('#radar-grid').textContent(),/5\/5/);}
   await page.locator('[data-page=market]').click();await page.locator('#market-search-input').fill('test/try');await page.locator('#market-search-button').click();await page.locator('#market-analysis .signal').waitFor();
   assert.match(await page.locator('#market-analysis .price').textContent(),/100/);price=101;
@@ -34,19 +35,19 @@ async function main(){const browser=await chromium.launch({headless:true,executa
   await fs.mkdir(path.join(__dirname,'../test-output'),{recursive:true});await page.screenshot({path:path.join(__dirname,'../test-output/detail-desktop.png')});
   await page.locator('[data-close=detail-dialog]').click();await page.locator('#market-analysis').getByRole('button',{name:'SANAL İŞLEM AÇ',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('#trade-submit').disabled);assert.match(await page.locator('#trade-entry').textContent(),/102/);entryPrice=103;
   await page.locator('#trade-frame').selectOption('five_minute');await page.waitForFunction(()=>!document.querySelector('#trade-submit').disabled&&state.selected?.frame_keys[0]==='five_minute');
-  assert.match(await page.locator('#trade-target').textContent(),/108.*%/);assert.match(await page.locator('#trade-stop').textContent(),/98.*-.*%/);
+  assert.match(await page.locator('#trade-target').textContent(),/108.*%/);assert.match(await page.locator('#trade-stop').textContent(),/\(-.*%\)/);
   delayFrame=true;await page.locator('#trade-frame').selectOption('one_hour');await page.locator('#trade-frame').selectOption('fifteen_minute');
   await page.waitForFunction(()=>!document.querySelector('#trade-submit').disabled&&state.selected?.frame_keys[0]==='fifteen_minute');
   await page.waitForTimeout(650);assert.deepEqual(await page.evaluate(()=>state.selected.frame_keys),['fifteen_minute'],'Slow old response cannot replace selected plan');delayFrame=false;
   assert.match(await page.locator('#trade-target').textContent(),/114.*%/);
   await page.screenshot({path:path.join(__dirname,'../test-output/selected-plan.png')});
-  await page.locator('#trade-submit').click();await page.waitForFunction(()=>JSON.parse(localStorage.getItem('coinpilot-pro-positions')||'[]').length===1);let position=await page.evaluate(()=>JSON.parse(localStorage.getItem('coinpilot-pro-positions'))[0]);assert.ok(position.entry>103&&position.entry<104);assert.equal(position.fee,.001);assert.deepEqual(position.frames,['fifteen_minute']);assert.equal(position.target,114);assert.ok(analyzeCalls>=3);
+  await page.locator('#trade-submit').click();await page.waitForFunction(()=>JSON.parse(localStorage.getItem('coinpilot-pro-positions')||'[]').length===1);let position=await page.evaluate(()=>JSON.parse(localStorage.getItem('coinpilot-pro-positions'))[0]);assert.ok(position.entry>103&&position.entry<104);assert.equal(position.fee,.001);assert.deepEqual(position.frames,['fifteen_minute']);assert.equal(position.target,114);assert.ok((position.entry-position.stop)/position.entry*100<=5.000001);assert.ok((position.target-position.entry)/(position.entry-position.stop)>=1.99999);assert.ok(analyzeCalls>=3);
   await page.waitForFunction(()=>document.querySelector('#exit-grid')?.textContent.includes('SATIŞ UYARISI'));
   assert.ok(exitCalls>0,'Opening a position starts sell monitoring automatically');
   await page.locator('[data-page=exits]').click();await page.locator('#exit-grid summary').first().click();assert.match(await page.locator('#exit-grid').textContent(),/MACD sıfır üstünde/);
   await page.screenshot({path:path.join(__dirname,'../test-output/exit-desktop.png'),fullPage:true});
   assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('coinpilot-pro-positions')).length),1,'Sell warning must not automatically close the position');
-  await page.locator('[data-page=positions]').click();assert.match(await page.locator('#position-page-list').textContent(),/Tahmini net K\/Z/);assert.match(await page.locator('#position-page-list').textContent(),/Hedef.*114.*%.*Stop.*98.*%/);assert.match(await page.locator('#position-page-list').textContent(),/Plan periyodu: 15 Dakika/);
+  await page.locator('[data-page=positions]').click();assert.match(await page.locator('#position-page-list').textContent(),/Tahmini net K\/Z/);assert.match(await page.locator('#position-page-list').textContent(),/Hedef.*114.*%.*Stop.*-.*%/);assert.match(await page.locator('#position-page-list').textContent(),/Plan periyodu: 15 Dakika/);assert.equal((await page.locator('#position-page-list').evaluate(n=>getComputedStyle(n).gridTemplateColumns)).split(' ').length,1);
   const downloadPromise=page.waitForEvent('download');await page.locator('#export-backup').click();const download=await downloadPromise;const backupPath=await download.path();const backup=JSON.parse(await fs.readFile(backupPath,'utf8'));assert.equal(backup.positions.length,1);
   // A malformed import cannot mutate the portfolio.
   await page.locator('#import-backup').setInputFiles({name:'bad.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({...backup,positions:[{...position,quantity:-1}]}))});await page.waitForFunction(()=>document.querySelector('#backup-message').textContent.includes('geçersiz'));assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('coinpilot-pro-positions')).length),1);
@@ -62,7 +63,7 @@ async function main(){const browser=await chromium.launch({headless:true,executa
     await page.locator('[data-page=market]').click();await page.locator('#market-search-button').click();await page.waitForFunction(()=>document.querySelector('#market-analysis .badge')?.textContent.includes('SAT'));
     await page.locator('#market-analysis').getByRole('button',{name:'SANAL İŞLEM AÇ',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('#trade-submit').disabled);
     assert.match(await page.locator('#trade-message').textContent(),/SAT sinyali/);
-    assert.match(await page.locator('#trade-message').textContent(),unsafeMode===1?/%8 üzerinde/:/stop belirlenemedi/);
+    assert.match(await page.locator('#trade-message').textContent(),unsafeMode===1?/risk kuralıyla/:/stop belirlenemedi/);
     await page.locator('#trade-submit').click();await page.waitForFunction(n=>JSON.parse(localStorage.getItem('coinpilot-pro-positions')).length===n,unsafeMode);
   }
   await page.reload();await page.locator('[data-page=positions]').click();assert.equal(await page.locator('#position-page-list .position').count(),2);
@@ -71,7 +72,7 @@ async function main(){const browser=await chromium.launch({headless:true,executa
   // Each page and a reload must start at the top, on desktop and mobile.
   await mobile.locator('#trade-dialog').evaluate(dialog=>dialog.close());
   for(const surface of [page,mobile]){
-    for(const destination of ['market','radar','positions','exits','home']){
+    for(const destination of ['market','radar','watchlist','positions','exits','home']){
       await surface.evaluate(()=>{window.scrollTo(0,document.documentElement.scrollHeight);document.querySelector('#sidebar').classList.add('open');});
       await surface.locator('[data-page='+destination+']').click();
       await surface.waitForFunction(()=>window.scrollY<=1);
@@ -93,7 +94,7 @@ async function main(){const browser=await chromium.launch({headless:true,executa
   await page.evaluate(()=>{window.__soundNodes=0;const original=audioContext.createOscillator.bind(audioContext);audioContext.createOscillator=()=>{window.__soundNodes++;return original();};lastSoundAt=-Infinity;});
   buyScore=65;buyChecks=3;await page.evaluate(()=>{state.alertStates.clear();notificationCooldowns.clear();byId('notification-toasts').replaceChildren();});await page.evaluate(()=>loadRadar(true));assert.equal(await page.locator('#notification-toasts .tone-buy').count(),0,'3/5 is not an AL alarm');buyChecks=4;await page.evaluate(()=>loadRadar(true));
   await page.waitForFunction(()=>document.querySelector('#notification-toasts').textContent.includes('4/5 koşul'));
-  assert.equal(await page.evaluate(()=>window.__soundNodes),4,'A qualifying buy emits a stronger four-note sound');
+  assert.equal(await page.evaluate(()=>window.__soundNodes),20,'A qualifying buy emits a distinct ten-second sound');
   assert.equal(await page.locator('#notification-toasts .tone-buy').count(),1);
   assert.equal(await page.locator('#notification-toasts .tone-buy small').evaluate(n=>getComputedStyle(n).color),'rgb(73, 223, 174)');
   await page.locator('#notification-toasts .tone-buy .notification-link').evaluate(n=>n.click());
@@ -101,9 +102,9 @@ async function main(){const browser=await chromium.launch({headless:true,executa
   assert.equal(await page.locator('#market-search-input').inputValue(),'TEST/TRY');
   assert.equal(await page.locator('#market-analysis .signal-badge-sell').evaluate(n=>getComputedStyle(n).color),'rgb(255, 143, 160)');
   await page.locator('[data-page=radar]').click();
-  await page.evaluate(()=>loadRadar(true));assert.equal(await page.evaluate(()=>window.__soundNodes),4,'Unchanged signals do not repeat the sound');
+  await page.evaluate(()=>loadRadar(true));assert.equal(await page.evaluate(()=>window.__soundNodes),20,'Unchanged signals do not repeat the sound');
   await page.locator('#sound-toggle').click();await page.evaluate(()=>alertOnce('muted-test','warning','Sadece yazılı bildirim testi'));
-  assert.match(await page.locator('#notification-toasts').textContent(),/Sadece yazılı/);assert.equal(await page.evaluate(()=>window.__soundNodes),4);
+  assert.match(await page.locator('#notification-toasts').textContent(),/Sadece yazılı/);assert.equal(await page.evaluate(()=>window.__soundNodes),20);
   await page.locator('#alerts-enabled').uncheck();const alertCount=await page.evaluate(()=>state.alerts.length);
   await page.evaluate(()=>alertOnce('disabled-test','warning','Görünmemeli'));assert.equal(await page.evaluate(()=>state.alerts.length),alertCount);
   await page.locator('#alerts-enabled').check();
