@@ -282,7 +282,7 @@ def no_stale_api(response):
 
 
 @app.get('/')
-def home():return render_template('pro.html',version='4.3.3',rules_version=VERSION)
+def home():return render_template('pro.html',version='4.4.0',rules_version=VERSION)
 
 
 @app.get('/api/dashboard')

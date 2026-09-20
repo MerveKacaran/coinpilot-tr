@@ -1,13 +1,18 @@
 'use strict';
 // Separate from the research observer: these are this browser's own paper positions.
-let pathBusy=false,orderPositionId=null,orderDisplayedQuantity=null,partialPositionId=null,partialDisplayedQuantity=null,targetsBusy=false;
+let pathBusy=false,orderPositionId=null,orderDisplayedQuantity=null,partialPositionId=null,partialDisplayedQuantity=null,targetsBusy=false,autoSellBusy=false;
 const pathDue=new Map(),pathErrors=new Map();
 const targetCache=new Map(),targetFrames=[['fifteen_minute','15 dakika'],['one_hour','Saatlik'],['daily','Günlük']];
 function targetPanel(p){
   const box=el('section','period-targets'),cached=targetCache.get(symbolOf(p));
   box.append(el('b','','PERİYOT HEDEFLERİ · GÜNCEL ANALİZ'));
-  for(const [key,label] of targetFrames){const row=el('div','period-target-row'),f=cached?.data?.frames?.[key];row.append(el('span','',label),el('strong','',f?levelText(f.target,p.entry):(cached?.error?'Alınamadı':'Bekleniyor…')));box.append(row);}
-  box.append(el('small','muted','Yüzdeler senin giriş fiyatına göredir. Bunlar ayrı analizlerdir; kayıtlı hedefi veya satış emrini değiştirmez.'));
+  for(const [key,label] of targetFrames){
+    const row=el('div','period-target-row'),f=cached?.data?.frames?.[key],known=positive(f?.target),reached=known&&Paper.targetReached(p,f.target);
+    const status=el('span',known?(reached?'target-status target-reached':'target-status target-missed'):'target-status target-unknown',known?(reached?'✓':'✕'):'—');
+    status.title=!known?'Hedef henüz hesaplanmadı.':reached?'İşlem açıldıktan sonra gözlenen en yüksek fiyat bu hedefe ulaştı.':p.tracking?.incomplete?'Doğrulanan kayıtlarda ulaşmadı; eksik aralık bulunduğu için kesin değildir.':'Doğrulanan kayıtlarda henüz ulaşmadı.';
+    row.append(el('span','',label),el('strong','',f?levelText(f.target,p.entry):(cached?.error?'Alınamadı':'Bekleniyor…')),status);box.append(row);
+  }
+  box.append(el('small','muted','✓ Hedef görüldü · ✕ Henüz görülmedi. Durum, işlemden sonra gözlenen en yüksek fiyatla güncel hesaplanan hedefi karşılaştırır. Yüzdeler senin giriş fiyatına göredir; kayıtlı hedefi veya satış emrini değiştirmez.'));
   if(cached?.data)box.append(el('small','muted','Analiz: '+timeText(cached.data.analyzed_at)));
   if(cached?.error)box.append(el('p','stale',cached.error+' Gösterilen eski hedefler güncel kabul edilmemeli.'));
   if(cached?.data?.errors?.length)box.append(el('p','stale',cached.data.errors.map(e=>(targetFrames.find(x=>x[0]===e.frame)?.[1]||e.frame)+': veri eksik').join(' · ')));
@@ -38,6 +43,17 @@ function syncStoredPortfolio(){
   state.positions=positions;state.history=history;
 }
 function hitLabel(hit){return timeText(new Date(hit.at*1000).toISOString())+(hit.source==='minute'?' · 1 dakikalık mumda; saniyesi bilinmiyor':' · canlı fiyat gözlemi');}
+function autoSellControl(p){
+  const wrap=el('section','auto-sell-control'),label=el('label','auto-sell-toggle'),input=el('input');input.type='checkbox';input.checked=!!p.autoSell?.enabled;
+  label.append(input,el('span','',input.checked?'OTOMATİK SANAL SATIŞ AÇIK':'OTOMATİK SANAL SATIŞ KAPALI'));wrap.append(label,el('small','muted','Yalnızca bu sayfa açıkken ve fiyat tazeyken çalışır. Kayıtlı hedef, kayıtlı stop veya seçili periyotlarda ≥3/4 SAT teyidi oluşursa kalan miktarın tamamını sanal olarak satar. Gerçek borsa emri göndermez.'));
+  input.addEventListener('change',()=>toggleAutoSell(p.id,input.checked));return wrap;
+}
+async function toggleAutoSell(id,enabled){
+  try{
+    await portfolioLock(()=>{syncStoredPortfolio();const p=state.positions.find(x=>x.id===id);if(!p)throw Error('Pozisyon artık açık değil.');const now=new Date().toISOString(),autoSell={enabled,enabledAt:enabled?(p.autoSell?.enabledAt||now):p.autoSell?.enabledAt||null,updatedAt:now};savePortfolio(state.positions.map(x=>x.id===id?{...x,autoSell}:x),state.history);});
+    renderPortfolio();notice('Otomatik sanal satış '+(enabled?'açıldı. Sayfa açıkken hedef, stop ve ≥3/4 SAT teyidi izlenecek.':'kapatıldı. Pozisyon açık kalacak.'));if(enabled)await checkAutoSales();
+  }catch(e){notice(e.message);renderPortfolio();}
+}
 function positionTools(p){
   const box=el('section','position-evidence'),t=p.tracking||{},o=p.sellOrder;
   box.append(targetPanel(p));
@@ -49,16 +65,24 @@ function positionTools(p){
   if(t.incomplete||t.openingMinuteUnknown)box.append(el('p','stale',(t.incomplete?'Eksik/verisiz aralık var. ':'')+(t.openingMinuteUnknown?'İşlemin açıldığı ilk eksik dakika dışarıda tutulur. ':'')+'Hedefin hiç görülmediği kesin söylenemez.'));
   if(pathErrors.has(p.id))box.append(el('p','stale',pathErrors.get(p.id)));
   box.append(btn('GEÇMİŞİ KONTROL ET','link',()=>refreshPositionPath(p.id)));
+  box.append(autoSellControl(p));
   if(o?.status==='pending'){
     box.append(el('p','pending-order','BEKLEYEN SANAL SATIŞ · '+levelText(o.price,p.entry)+' · '+(o.quantity??p.quantity).toLocaleString('tr-TR',{maximumFractionDigits:10})+' adet'),el('small','muted','Oluşturuldu: '+timeText(o.createdAt)+' · '+(o.replay?'Açılışta geçmiş mum simülasyonu açık.':'Yalnızca sayfa çalışırken canlı gözlem.')));
     box.append(btn('EMRİ DEĞİŞTİR','link',()=>openSellOrder(p.id)),btn('EMRİ İPTAL ET','link',()=>cancelSellOrder(p.id)));
   }else box.append(btn('FİYATLA SANAL SATIŞ EMRİ','sell',()=>openSellOrder(p.id)));
   return box;
 }
-function executionLabel(source){return {'history-minute':'Geçmiş mumdan sanal limit satışı','live-bid':'Canlı alış kotasyonuyla sanal limit satışı','live-last':'Son işlem fiyatıyla sanal limit varsayımı'}[source]||'Manuel sanal satış';}
+function executionLabel(source){return {'history-minute':'Geçmiş mumdan sanal limit satışı','live-bid':'Canlı alış kotasyonuyla sanal limit satışı','live-last':'Son işlem fiyatıyla sanal limit varsayımı','auto-target':'Otomatik sanal satış · kayıtlı hedef','auto-stop':'Otomatik sanal satış · kayıtlı stop','auto-signal':'Otomatik sanal satış · ≥3/4 teknik SAT teyidi'}[source]||'Manuel sanal satış';}
 function executionHistory(p,f){
-  return {id:f.orderId?'limit:'+f.orderId:crypto.randomUUID(),positionId:String(p.id),revision:f.revision,closesPosition:f.closesPosition,remainingQuantity:f.remaining?.quantity||0,remainingAmount:f.remaining?.amount||0,date:new Date(f.at*1000).toLocaleString('tr-TR'),closedAt:new Date(f.at*1000).toISOString(),recordedAt:new Date().toISOString(),coin:symbolOf(p),entry:p.entry,exit:f.exit,percent:f.percent,pnl:f.pnl,amount:f.amount,quantity:f.quantity,fee:p.fee||0,slippage:f.source==='manual'?(p.slippage||0):0,method:f.source,sellOrder:p.sellOrder,tracking:f.tracking||p.tracking,
-    executionNote:(f.closesPosition?'Tam satış · ':'Parçalı satış · ')+f.quantity.toLocaleString('tr-TR',{maximumFractionDigits:10})+' adet · '+executionLabel(f.source)+(f.source==='manual'?'; komisyon ve kayma dahil.':'; seçilen adedin limit fiyatından dolduğu varsayılır. Komisyon düşüldü; emir sırası ve likidite modellenmez.')};
+  const marketLike=f.source==='manual'||f.source?.startsWith('auto-');
+  return {id:f.orderId?'limit:'+f.orderId:crypto.randomUUID(),positionId:String(p.id),revision:f.revision,closesPosition:f.closesPosition,remainingQuantity:f.remaining?.quantity||0,remainingAmount:f.remaining?.amount||0,date:new Date(f.at*1000).toLocaleString('tr-TR'),closedAt:new Date(f.at*1000).toISOString(),recordedAt:new Date().toISOString(),coin:symbolOf(p),entry:p.entry,exit:f.exit,percent:f.percent,pnl:f.pnl,amount:f.amount,quantity:f.quantity,fee:p.fee||0,slippage:marketLike?(p.slippage||0):0,method:f.source,sellOrder:p.sellOrder,tracking:f.tracking||p.tracking,
+    executionNote:(f.closesPosition?'Tam satış · ':'Parçalı satış · ')+f.quantity.toLocaleString('tr-TR',{maximumFractionDigits:10})+' adet · '+executionLabel(f.source)+(marketLike?'; taze alış kotasyonu, komisyon ve kayma varsayımı kullanıldı. Gerçek emir değildir.':'; seçilen adedin limit fiyatından dolduğu varsayılır. Komisyon düşüldü; emir sırası ve likidite modellenmez.')};
+}
+function announceLevelHits(before,after){
+  const hits=Paper.levelHits(before,after);if(!hits.length)return;
+  const both=hits.length>1,symbol=symbolOf(after);
+  if(hits.includes('target'))alertOnce('level-target:'+after.id,'hit',symbol+' · Kayıtlı hedefe ulaştı: '+money(after.target),'buy',both?'none':'target');
+  if(hits.includes('stop'))alertOnce('level-stop:'+after.id,'hit',symbol+' · Kayıtlı stop seviyesine ulaştı: '+money(after.stop),'sell','stop');
 }
 function commitPaperResult(result){
   const p=result.position;
@@ -70,7 +94,22 @@ function commitPaperResult(result){
   }else if(JSON.stringify(state.positions.find(x=>x.id===p.id))!==JSON.stringify(p))savePortfolio(state.positions.map(x=>x.id===p.id?p:x),state.history);
 }
 async function observePositions(){
-  try{await portfolioLock(()=>{syncStoredPortfolio();for(const p of [...state.positions]){if(state.closing.has(p.id))continue;commitPaperResult(Paper.observe(p,quoteFor(symbolOf(p))));}});}catch(e){notice(e.message);}
+  try{await portfolioLock(()=>{syncStoredPortfolio();for(const p of [...state.positions]){if(state.closing.has(p.id))continue;const result=Paper.observe(p,quoteFor(symbolOf(p)));announceLevelHits(p,result.position);commitPaperResult(result);}});}catch(e){notice(e.message);}
+}
+async function checkAutoSales(){
+  if(autoSellBusy||brokenStorage.size)return;autoSellBusy=true;
+  try{
+    for(const snapshot of [...state.positions]){
+      if(!snapshot.autoSell?.enabled||state.closing.has(snapshot.id))continue;
+      await portfolioLock(()=>{
+        syncStoredPortfolio();let p=state.positions.find(x=>x.id===snapshot.id);if(!p||state.closing.has(p.id))return;
+        const q=quoteFor(symbolOf(p)),reason=Paper.autoSaleReason(p,q,exitCache.get(exitKey(p)));if(!reason)return;
+        if(p.sellOrder?.status==='pending')p={...p,sellOrder:{...p.sellOrder,status:'cancelled',cancelledAt:new Date().toISOString()}};
+        const exit=(positive(q.bid)?q.bid:q.price)*(1-(p.slippage||0)),sale=Paper.settle(p,p.quantity,exit),at=Date.parse(q.price_updated_at)/1000;
+        commitPaperResult({position:p,fill:{...sale,at,source:'auto-'+reason,tracking:p.tracking}});
+      });
+    }
+  }catch(e){notice('Otomatik sanal satış çalıştırılamadı: '+e.message);}finally{autoSellBusy=false;}
 }
 async function loadPositionPaths(){
   if(pathBusy||brokenStorage.size||!state.positions.length)return;
@@ -88,7 +127,7 @@ async function loadPositionPaths(){
         await portfolioLock(()=>{
           syncStoredPortfolio();const current=state.positions.find(p=>p.id===snapshot.id);
           if(!current||state.closing.has(current.id)||(current.tracking?.through||opened)!==since)return;
-          commitPaperResult(Paper.reconcile(current,data));pathErrors.delete(current.id);
+          const result=Paper.reconcile(current,data);announceLevelHits(current,result.position);commitPaperResult(result);pathErrors.delete(current.id);
           if(data.has_more)pathDue.set(current.id,Date.now()+1000);
         });
       }catch(e){pathErrors.set(snapshot.id,e.message);}

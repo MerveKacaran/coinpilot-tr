@@ -19,6 +19,7 @@ let exitBusy=false;
 const notificationCooldowns=new Map(),positionPnlSamples=new Map();
 const soundKey='coinpilot-pro-sound',volumeKey='coinpilot-pro-volume';
 let audioContext=null,soundEnabled=load(soundKey,false)===true,lastSoundAt=-Infinity;
+const levelSoundAt={target:-Infinity,stop:-Infinity};
 let soundVolume=Math.min(100,Math.max(10,Number(load(volumeKey,70))||70));
 const baseTitle=document.title,unread={buy:0,sell:0,warning:0,info:0};
 const notificationKinds={buy:{label:'AL ADAYI',color:'#49dfae'},sell:{label:'SAT SİNYALİ',color:'#ff7185'},warning:{label:'RİSK UYARISI',color:'#ffd166'},info:{label:'BİLDİRİM',color:'#83aaff'}};
@@ -93,6 +94,20 @@ function playAlertSound(test=false){
   if(!test&&Date.now()-lastSoundAt<8000)return false;
   try{const start=audioContext.currentTime;[660,880,660,990].forEach((frequency,i)=>{const oscillator=audioContext.createOscillator(),gain=audioContext.createGain(),at=start+i*.24;oscillator.type='triangle';oscillator.frequency.value=frequency;gain.gain.setValueAtTime(0,at);gain.gain.linearRampToValueAtTime(.3*soundVolume/100,at+.025);gain.gain.setValueAtTime(.3*soundVolume/100,at+.12);gain.gain.exponentialRampToValueAtTime(.001,at+.22);oscillator.connect(gain);gain.connect(audioContext.destination);oscillator.start(at);oscillator.stop(at+.23);oscillator.onended=()=>{oscillator.disconnect();gain.disconnect();};});lastSoundAt=Date.now();return true;}catch(_){byId('sound-status').textContent='Ses çalınamadı; tarayıcının ses iznini kontrol et. Yazılı bildirimler devam ediyor.';return false;}
 }
+function playLevelAlarm(kind){
+  if(!soundEnabled||!audioContext||audioContext.state!=='running')return false;
+  if(Date.now()-levelSoundAt[kind]<9500)return false;
+  try{
+    const start=audioContext.currentTime,frequencies=kind==='stop'?[880,440]:[784,988];
+    for(let i=0;i<20;i++){
+      const oscillator=audioContext.createOscillator(),gain=audioContext.createGain(),at=start+i*.5;
+      oscillator.type=kind==='stop'?'square':'sine';oscillator.frequency.value=frequencies[i%2];
+      gain.gain.setValueAtTime(0,at);gain.gain.linearRampToValueAtTime((kind==='stop'?.22:.16)*soundVolume/100,at+.025);gain.gain.setValueAtTime((kind==='stop'?.22:.16)*soundVolume/100,at+.23);gain.gain.exponentialRampToValueAtTime(.001,at+.36);
+      oscillator.connect(gain);gain.connect(audioContext.destination);oscillator.start(at);oscillator.stop(at+.38);oscillator.onended=()=>{oscillator.disconnect();gain.disconnect();};
+    }
+    lastSoundAt=Date.now();levelSoundAt[kind]=lastSoundAt;return true;
+  }catch(_){byId('sound-status').textContent='Seviye alarmı çalınamadı; tarayıcının ses iznini kontrol et.';return false;}
+}
 async function toggleSound(){
   soundEnabled=!soundEnabled;try{store(soundKey,soundEnabled);}catch(e){notice('Ses tercihi kaydedilemedi: '+e.message);}
   renderSoundStatus();if(soundEnabled)await enableAudio(true);
@@ -110,14 +125,14 @@ function notificationBody(message,symbol){
   const action=btn(message+' →','notification-link',()=>openNotification(symbol));
   action.setAttribute('aria-label',message+' · '+symbol+' analizine git');return action;
 }
-function showNotification(message,kind='info',symbol=null){
+function showNotification(message,kind='info',symbol=null,sound='normal'){
   if(!notificationKinds[kind])kind='info';
   const host=byId('notification-toasts'),toast=el('article','notification-toast tone-'+kind);
   toast.setAttribute('role','status');toast.append(el('small','',notificationKinds[kind].label+' · '+new Date().toLocaleTimeString('tr-TR')),notificationBody(message,symbol));
   const close=btn('×','dismiss-toast',()=>toast.remove());close.setAttribute('aria-label','Bildirimi kapat');toast.append(close);host.prepend(toast);while(host.children.length>3)host.lastElementChild.remove();setTimeout(()=>toast.remove(),10000);
-  if(document.hidden){unread[kind]++;updateTabIndicator();}playAlertSound();
+  if(document.hidden){unread[kind]++;updateTabIndicator();}if(sound==='target'||sound==='stop')playLevelAlarm(sound);else if(sound!=='none')playAlertSound();
 }
-function alertOnce(key,status,message,kind='info') {const prev=state.alertStates.get(key);state.alertStates.set(key,status);if(!status||status===prev||!byId('alerts-enabled').checked)return;const cooldownKey=key+'|'+status,now=Date.now();if(now-(notificationCooldowns.get(cooldownKey)??-Infinity)<90000)return;notificationCooldowns.set(cooldownKey,now);for(const[k,at]of notificationCooldowns)if(now-at>600000)notificationCooldowns.delete(k);const symbol=message.match(/^([A-Z0-9]{1,17}\/TRY)(?=\s|$)/)?.[1]||null;state.alerts.unshift({at:new Date().toISOString(),message,kind,symbol});state.alerts=state.alerts.slice(0,30);renderAlerts();showNotification(message,kind,symbol);}
+function alertOnce(key,status,message,kind='info',sound='normal') {const prev=state.alertStates.get(key);state.alertStates.set(key,status);if(!status||status===prev||!byId('alerts-enabled').checked)return;const cooldownKey=key+'|'+status,now=Date.now();if(now-(notificationCooldowns.get(cooldownKey)??-Infinity)<90000)return;notificationCooldowns.set(cooldownKey,now);for(const[k,at]of notificationCooldowns)if(now-at>600000)notificationCooldowns.delete(k);const symbol=message.match(/^([A-Z0-9]{1,17}\/TRY)(?=\s|$)/)?.[1]||null;state.alerts.unshift({at:new Date().toISOString(),message,kind,symbol});state.alerts=state.alerts.slice(0,30);renderAlerts();showNotification(message,kind,symbol,sound);}
 function notifyHighBuy(s){
   for(const key of s.frame_keys){const frame=s.frames[key],eligible=frame?.checks_passed>=4&&isFresh(quoteFor(s.coin.symbol,s.coin));
     alertOnce('buy-checks:'+s.coin.symbol+'|'+key,eligible?'qualified':'',s.coin.symbol+' · AL adayı · '+frameName(key)+' '+(frame?.checks_passed??0)+'/5 koşul · '+s.score+'/100 teknik puan. Eksik koşulları ve riski incele; kazanç garantisi değildir.','buy');
@@ -191,12 +206,12 @@ function renderPortfolio(){let cost=0,value=0,complete=true;for(const p of state
 function positionCard(p){const symbol=symbolOf(p),q=quoteFor(symbol),value=positionValue(p),gain=value===null?null:value-p.amount,result=gain===null?null:gain/p.amount*100,card=el('article','position');card.dataset.positionId=String(p.id);card.append(el('h3','',symbol),quoteBlock(symbol),el('div','levels','Giriş '+money(p.entry)+' · Tutar '+money(p.amount)+' · Adet '+p.quantity.toLocaleString('tr-TR',{maximumFractionDigits:10})),el('b','value '+(gain>=0?'positive':'negative'),money(value)),el('b',gain>=0?'positive':'negative','Tahmini net K/Z: '+money(gain)+' · '+pct(result)),el('div','levels','Hedef '+levelText(p.target,p.entry)+' · Stop '+levelText(p.stop,p.entry)),el('small','', 'Plan periyodu: '+exitFrames(p).map(frameName).join(' · ')+' · Yüzdeler giriş fiyatına göredir.'));
   notifyPositionLoss(p,result,q);
   const progress=q&&positive(p.target)?Math.max(0,Math.min(100,(q.price-p.entry)/(p.target-p.entry)*100)):0,bar=el('div','bar'),fill=el('i');fill.style.width=progress+'%';bar.append(fill);card.append(bar,el('small','',positive(p.target)?'Hedefe ilerleme %'+progress.toFixed(0):'Hedef belirlenmedi; fiyat ve kâr/zarar izleniyor.'));
-  let status='İzleniyor',key='';if(isFresh(q)){if(positive(p.stop)&&q.price<=p.stop){status='Stop seviyesi aşıldı';key='stop';}else if(positive(p.target)&&q.price>=p.target){status='Hedef seviyesine ulaştı';key='target';}else if(positive(p.stop)&&q.price<=p.stop*1.01){status='Stop seviyesine %1 mesafede';key='near-stop';}else if(positive(p.target)&&q.price>=p.target*.99){status='Hedefe %1 mesafede';key='near-target';}alertOnce('position:'+p.id,key,symbol+' · '+status);}else status='Fiyat gecikmiş / bekleniyor; değer son kotasyondur.';
+  let status='İzleniyor',key='';if(isFresh(q)){if(positive(p.stop)&&q.price<=p.stop){status='Stop seviyesi aşıldı';key='stop';}else if(positive(p.target)&&q.price>=p.target){status='Hedef seviyesine ulaştı';key='target';}else if(positive(p.stop)&&q.price<=p.stop*1.01){status='Stop seviyesine %1 mesafede';key='near-stop';}else if(positive(p.target)&&q.price>=p.target*.99){status='Hedefe %1 mesafede';key='near-target';}if(key==='near-stop'||key==='near-target')alertOnce('position:'+p.id,key,symbol+' · '+status);}else status='Fiyat gecikmiş / bekleniyor; değer son kotasyondur.';
   if(p.riskWarning)card.append(el('p','position-status stale','Giriş uyarısı: '+p.riskWarning));
   card.append(positionTools(p));
   card.append(el('p','position-status',status));const exitInfo=exitStatus(p);card.append(el('p','position-status '+exitInfo.tone,'Satış takibi: '+exitInfo.label));if(state.page!=='exits')card.append(btn('SATIŞ TAKİBİ','link',()=>switchPage('exits')));const close=btn(state.closing.has(p.id)?'DOĞRULANIYOR…':'PARÇALI / TAM SAT','sell',()=>closePosition(p.id));close.disabled=state.closing.has(p.id);card.append(close);return card;}
 let dashboardBusy=false;
-async function loadDashboard(){if(dashboardBusy)return;dashboardBusy=true;try{const d=await api('/api/dashboard',{},20000);Object.values(d.quotes).forEach(rememberQuote);byId('live-status').textContent=d.live?'WebSocket · 3 sn ekran yenileme':'REST · fiyat zamanı kontrol edilir';byId('live-dot').classList.toggle('online',d.live);await observePositions();paintQuotes();renderPortfolio();renderMarket(d);loadPositionPaths();if(state.marketSymbol&&!marketBusy&&Date.now()-marketAt>60000)analyzeMarket(state.marketSymbol,true);}catch(e){byId('live-status').textContent='Bağlantı bekleniyor';byId('live-dot').classList.remove('online');paintQuotes();}finally{dashboardBusy=false;}}
+async function loadDashboard(){if(dashboardBusy)return;dashboardBusy=true;try{const d=await api('/api/dashboard',{},20000);Object.values(d.quotes).forEach(rememberQuote);byId('live-status').textContent=d.live?'WebSocket · 3 sn ekran yenileme':'REST · fiyat zamanı kontrol edilir';byId('live-dot').classList.toggle('online',d.live);await observePositions();await checkAutoSales();paintQuotes();renderPortfolio();renderMarket(d);loadPositionPaths();if(state.marketSymbol&&!marketBusy&&Date.now()-marketAt>60000)analyzeMarket(state.marketSymbol,true);}catch(e){byId('live-status').textContent='Bağlantı bekleniyor';byId('live-dot').classList.remove('online');paintQuotes();}finally{dashboardBusy=false;}}
 function tradeInputs(){const amount=Number(byId('trade-amount').value),fee=Number(byId('trade-fee').value)/100,slip=Number(byId('trade-slip').value)/100;if(!positive(amount)||amount<1||!num(fee)||fee<0||fee>.05||!num(slip)||slip<0||slip>.05)throw Error('Tutar en az 1 TL; maliyetler %0–5 olmalı.');return{amount,fee,slip};}
 function tradePlan(s,inputs){const{amount,fee,slip}=inputs,q=s.coin;if(!isFresh(q))throw Error('Güncel fiyat doğrulanamadı; yeniden dene.');const base=positive(q.ask)?q.ask:q.price,entry=base*(1+slip),target=positive(s.target)&&s.target>entry?s.target:null,stop=positive(s.stop)&&s.stop<entry?s.stop:null,risk=stop===null?null:(entry-stop)/entry*100;const quantity=amount/(entry*(1+fee)),atTarget=target===null?null:quantity*target*(1-slip)*(1-fee)-amount,atStop=stop===null?null:quantity*stop*(1-slip)*(1-fee)-amount;const warnings=[];if(!s.all_frames_passed)warnings.push('Seçili periyotlarda 5/5 teyit yok.');if(s.sell_setup)warnings.push('SAT sinyali var.');if(risk!==null&&risk>8)warnings.push('Stop mesafesi %'+risk.toFixed(2)+'; %8 üzerinde.');if(target===null)warnings.push('Geçerli hedef belirlenemedi; hedef takibi olmayacak.');if(stop===null)warnings.push('Geçerli stop belirlenemedi; stop uyarısı olmayacak.');if(atTarget!==null&&atTarget<=0)warnings.push('Hedef getirisi tahmini maliyetleri karşılamıyor.');return{entry,quantity,target,stop,risk,atTarget,atStop,warnings};}
 function previewTrade(){if(!state.selected)return;try{const inputs=tradeInputs(),plan=tradePlan(state.selected,inputs);byId('trade-target').textContent=levelText(plan.target,plan.entry);byId('trade-stop').textContent=levelText(plan.stop,plan.entry);byId('trade-risk').textContent=frameName(byId('trade-frame').value)+' planı · Tahmini giriş '+money(plan.entry)+' · Hedefte net '+money(plan.atTarget)+' · Stopta net '+money(plan.atStop)+' · Net getiri/risk '+(num(plan.atTarget)&&num(plan.atStop)?(plan.atTarget/Math.abs(plan.atStop)).toFixed(2):'—');byId('trade-message').textContent=(plan.warnings.length?'⚠ '+plan.warnings.join(' ')+' ':'')+'Sanal işlem açabilirsin; risk uyarıları engel değildir. Son onayda güncel fiyat alınır.';}catch(e){byId('trade-risk').textContent='';byId('trade-message').textContent=e.message;}}
@@ -287,7 +302,7 @@ async function loadExitChecks(force=false){
     }catch(e){if(state.positions.some(pos=>exitKey(pos)===key))exitCache.set(key,{...exitCache.get(key),error:e.message,checkedAt:Date.now()});}
     renderExitTracking();
   }}
-  try{await Promise.all([worker(),worker()]);}finally{exitBusy=false;renderPortfolio();}
+  try{await Promise.all([worker(),worker()]);}finally{exitBusy=false;await checkAutoSales();renderPortfolio();}
 }
 document.querySelectorAll('.nav').forEach(n=>n.addEventListener('click',()=>switchPage(n.dataset.page)));
 document.querySelectorAll('[data-goto]').forEach(n=>n.addEventListener('click',()=>switchPage(n.dataset.goto)));

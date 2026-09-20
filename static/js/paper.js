@@ -5,14 +5,30 @@
   const epoch=x=>positive(x)&&x<=8640000000000;
   const copy=x=>JSON.parse(JSON.stringify(x));
   function validExtras(p){
-    const o=p.sellOrder,t=p.tracking;
+    const o=p.sellOrder,t=p.tracking,a=p.autoSell;
     if(o!=null&&!(typeof o.id==='string'&&positive(o.price)&&typeof o.createdAt==='string'&&Number.isFinite(stamp(o.createdAt))&&['pending','cancelled','filled'].includes(o.status)&&typeof o.replay==='boolean'))return false;
     if(t!=null&&!(t.version===1&&[t.high,t.low].every(x=>x==null||positive(x))&&(t.through==null||epoch(t.through))&&['targetHit','stopHit'].every(k=>t[k]==null||epoch(t[k].at)&&['quote','minute'].includes(t[k].source))))return false;
     if(o?.quantity!=null&&!positive(o.quantity))return false;
     if(p.positionId==null&&o?.status==='pending'&&o.quantity!=null&&o.quantity>p.quantity*(1+1e-12))return false;
     if(p.revision!=null&&(!Number.isSafeInteger(p.revision)||p.revision<0))return false;
     if(p.positionId!=null&&!(typeof p.positionId==='string'&&typeof p.closesPosition==='boolean'&&Number.isSafeInteger(p.revision)&&p.revision>0&&Number.isFinite(p.remainingQuantity)&&p.remainingQuantity>=0&&Number.isFinite(p.remainingAmount)&&p.remainingAmount>=0))return false;
+    if(a!=null&&!(typeof a.enabled==='boolean'&&['enabledAt','updatedAt'].every(k=>a[k]==null||typeof a[k]==='string'&&Number.isFinite(stamp(a[k])))))return false;
     return true;
+  }
+  function targetReached(p,target){return positive(target)&&positive(p?.tracking?.high)&&p.tracking.high>=target;}
+  function levelHits(before,after){
+    const hits=[];
+    for(const key of ['targetHit','stopHit'])if(!before?.tracking?.[key]&&after?.tracking?.[key])hits.push(key==='targetHit'?'target':'stop');
+    return hits;
+  }
+  function autoSaleReason(p,q,record,now=Date.now()/1000){
+    if(!p?.autoSell?.enabled)return null;
+    const at=stamp(q?.price_updated_at);
+    if(!positive(q?.price)||!Number.isFinite(at)||now-at>30||at>now+5)return null;
+    if(positive(p.stop)&&q.price<=p.stop)return 'stop';
+    if(positive(p.target)&&q.price>=p.target)return 'target';
+    if(!record||record.error||!record.data||!Number.isFinite(record.receivedAt)||now*1000-record.receivedAt>90000||record.receivedAt>now*1000+5000)return null;
+    return Object.values(record.data.frames||{}).some(f=>Number.isFinite(f?.count)&&f.count>=3)?'signal':null;
   }
   function settle(p,quantity,exit){
     if(!positive(quantity)||!positive(exit)||!positive(p.quantity)||!positive(p.amount)||quantity>p.quantity*(1+1e-12))throw Error('Satış adedi sıfırdan büyük ve kalan adetten fazla olmamalı.');
@@ -99,5 +115,5 @@
     }
     return {positions:[...positions.values()],history};
   }
-  return {observe,reconcile,validExtras,settle,mergePortfolio};
+  return {observe,reconcile,validExtras,settle,mergePortfolio,targetReached,levelHits,autoSaleReason};
 });

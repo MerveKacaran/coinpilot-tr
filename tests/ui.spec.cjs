@@ -16,6 +16,8 @@ async function main(){const browser=await chromium.launch({headless:true,executa
     else if(u.pathname==='/api/analyze'){analyzeCalls++;if(delayFrame&&frames[0]==='one_hour')await new Promise(resolve=>setTimeout(resolve,500));data={status:'success',item:signal(frames,u.searchParams.get('fresh')==='1')};if(unsafeMode)Object.assign(data.item,{can_open_trade:false,all_frames_passed:false,risk_ok:false,sell_setup:true,action:'SAT',stop:unsafeMode===1?75:null,target:unsafeMode===1?110:null});}
     else if(u.pathname==='/api/quote'){if(failedQuote){await route.fulfill({status:503,json:{status:'error',message:'Fixture bağlantı hatası'}});return;}data={status:'success',coin:quote(quotePrice)};}
     else if(u.pathname==='/api/exit'){exitCalls++;data=exitFixture(frames);}
+    else if(u.pathname==='/api/targets')data={status:'success',symbol:'TEST/TRY',frames:{fifteen_minute:{target:108},one_hour:{target:110},daily:{target:115}},errors:[],analyzed_at:new Date().toISOString()};
+    else if(u.pathname==='/api/price-path')data={status:'success',symbol:'TEST/TRY',candles:[],through:Math.floor(Date.now()/60000)*60,missing_minutes:0,clipped:false,has_more:false};
     else if(u.pathname==='/api/backtest')data={status:'success',frame:'five_minute',result:{bars:400,from_time:1700000000,to_time:1701000000,trade_count:10,net_return_pct:2,win_rate:60,max_drawdown_pct:3,profit_factor:1.3,note:'Kontrollü test'}};
     else throw Error('Unexpected API: '+u.pathname);
     await route.fulfill({json:data});
@@ -48,8 +50,8 @@ async function main(){const browser=await chromium.launch({headless:true,executa
   const downloadPromise=page.waitForEvent('download');await page.locator('#export-backup').click();const download=await downloadPromise;const backupPath=await download.path();const backup=JSON.parse(await fs.readFile(backupPath,'utf8'));assert.equal(backup.positions.length,1);
   // A malformed import cannot mutate the portfolio.
   await page.locator('#import-backup').setInputFiles({name:'bad.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({...backup,positions:[{...position,quantity:-1}]}))});await page.waitForFunction(()=>document.querySelector('#backup-message').textContent.includes('geçersiz'));assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('coinpilot-pro-positions')).length),1);
-  failedQuote=true;await page.locator('#position-page-list').getByRole('button',{name:'SANAL SAT',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Pozisyon açık tutuldu'));assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('coinpilot-pro-positions')).length),1);
-  failedQuote=false;await page.locator('#position-page-list').getByRole('button',{name:'SANAL SAT',exact:true}).click();await page.waitForFunction(()=>JSON.parse(localStorage.getItem('coinpilot-pro-positions')).length===0);const history=await page.evaluate(()=>JSON.parse(localStorage.getItem('coinpilot-pro-history'))[0]);assert.ok(history.exit>104&&history.exit<105);assert.ok(Number.isFinite(history.pnl));
+  failedQuote=true;await page.locator('#position-page-list').getByRole('button',{name:'PARÇALI / TAM SAT',exact:true}).click();await page.locator('#partial-submit').click();await page.waitForFunction(()=>document.querySelector('#partial-message').textContent.includes('Fixture bağlantı hatası'));assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('coinpilot-pro-positions')).length),1);
+  failedQuote=false;await page.locator('#partial-submit').click();await page.waitForFunction(()=>JSON.parse(localStorage.getItem('coinpilot-pro-positions')).length===0);const history=await page.evaluate(()=>JSON.parse(localStorage.getItem('coinpilot-pro-history'))[0]);assert.ok(history.exit>104&&history.exit<105);assert.ok(Number.isFinite(history.pnl));
   assert.equal(await page.locator('#exit-grid .position').count(),0,'Closed positions leave sell monitoring');
   // Old backup must not reopen a subsequently closed position.
   await page.locator('#import-backup').setInputFiles({name:'backup.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(backup))});await page.waitForFunction(()=>document.querySelector('#backup-message').textContent.includes('birleştirildi'));assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('coinpilot-pro-positions')).length),0);
@@ -94,7 +96,7 @@ async function main(){const browser=await chromium.launch({headless:true,executa
   assert.equal(await page.evaluate(()=>window.__soundNodes),4,'A qualifying buy emits a stronger four-note sound');
   assert.equal(await page.locator('#notification-toasts .tone-buy').count(),1);
   assert.equal(await page.locator('#notification-toasts .tone-buy small').evaluate(n=>getComputedStyle(n).color),'rgb(73, 223, 174)');
-  await page.locator('#notification-toasts .tone-buy .notification-link').click();
+  await page.locator('#notification-toasts .tone-buy .notification-link').evaluate(n=>n.click());
   await page.waitForFunction(()=>state.page==='market'&&state.marketSymbol==='TEST/TRY'&&!marketBusy);
   assert.equal(await page.locator('#market-search-input').inputValue(),'TEST/TRY');
   assert.equal(await page.locator('#market-analysis .signal-badge-sell').evaluate(n=>getComputedStyle(n).color),'rgb(255, 143, 160)');
