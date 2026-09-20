@@ -3,11 +3,12 @@
 let pathBusy=false,orderPositionId=null,orderDisplayedQuantity=null,partialPositionId=null,partialDisplayedQuantity=null,targetsBusy=false,autoSellBusy=false;
 const pathDue=new Map(),pathErrors=new Map();
 const targetCache=new Map(),targetFrames=[['fifteen_minute','15 dakika'],['one_hour','Saatlik'],['daily','Günlük']];
-const positionChartCache=new Map(),positionChartRequests=new Map();
-function positionChartKey(p){return symbolOf(p)+'|'+exitFrames(p)[0];}
+const positionChartCache=new Map(),positionChartRequests=new Map(),positionChartFrames=new Map();
+function positionChartFrame(p){const selected=positionChartFrames.get(String(p.id));return catalog.some(([key])=>key===selected)?selected:exitFrames(p)[0];}
+function positionChartKey(p,frame=positionChartFrame(p)){return symbolOf(p)+'|'+frame;}
 function positionChartMaxAge(frame){return frame==='five_minute'?60000:frame==='fifteen_minute'?120000:frame==='one_hour'?300000:frame==='four_hour'?600000:900000;}
-async function ensurePositionChart(p,force=false){
-  const symbol=symbolOf(p),frame=exitFrames(p)[0],key=positionChartKey(p),cached=positionChartCache.get(key),age=Date.now()-(cached?.at||0),maxAge=cached?.error?30000:positionChartMaxAge(frame);
+async function ensurePositionChart(p,force=false,frame=positionChartFrame(p)){
+  const symbol=symbolOf(p),key=positionChartKey(p,frame),cached=positionChartCache.get(key),age=Date.now()-(cached?.at||0),maxAge=cached?.error?30000:positionChartMaxAge(frame);
   if((!force&&cached&&age<maxAge)||positionChartRequests.has(key))return positionChartRequests.get(key);
   const request=api('/api/analyze',{symbol,frames:frame},60000).then(data=>{
     const item=data?.item,series=item?.frames?.[frame]?.chart;
@@ -29,8 +30,9 @@ function drawPositionChart(canvas,p,data){
   ctx.fillStyle='#92a4bf';ctx.fillText(new Date(series[0].time*1000).toLocaleString('tr-TR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}),left,h-5);ctx.textAlign='right';ctx.fillText(new Date(series.at(-1).time*1000).toLocaleString('tr-TR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}),w-right,h-5);
 }
 function positionChartPanel(p){
-  const key=positionChartKey(p),frame=exitFrames(p)[0],cached=positionChartCache.get(key),box=el('section','position-mini-chart'),head=el('div','position-chart-head');
-  head.append(el('b','',frameName(frame)+' FİYAT GRAFİĞİ'),btn('YENİLE','link',()=>ensurePositionChart(p,true)));box.append(head);
+  const frame=positionChartFrame(p),key=positionChartKey(p,frame),cached=positionChartCache.get(key),box=el('section','position-mini-chart'),head=el('div','position-chart-head'),actions=el('div','position-chart-actions'),select=el('select');
+  select.setAttribute('aria-label',symbolOf(p)+' grafik periyodu');for(const[value,label]of catalog){const option=el('option','',label);option.value=value;select.append(option);}select.value=frame;select.addEventListener('change',()=>{positionChartFrames.set(String(p.id),select.value);ensurePositionChart(p,false,select.value);renderPortfolio();});
+  actions.append(select,btn('YENİLE','link',()=>ensurePositionChart(p,true,frame)));head.append(el('b','',frameName(frame)+' FİYAT GRAFİĞİ'),actions);box.append(head);
   if(cached?.data){const canvas=el('canvas');canvas.setAttribute('role','img');canvas.setAttribute('aria-label',symbolOf(p)+' '+frameName(frame)+' mum grafiği; giriş, hedef, stop ve canlı fiyat seviyeleri');box.append(canvas,el('p','position-chart-legend','● Mumlar · '+frameName(frame)+' kapanışları  |  Mavi giriş · Yeşil hedef · Kırmızı stop · Sarı canlı fiyat'),el('small','muted','Son kapanış: '+timeText(cached.data.closedAt*1000)+' · Grafik analizi: '+timeText(cached.data.analyzedAt)));bindCanvas(canvas,()=>drawPositionChart(canvas,p,cached.data));}
   else box.append(el('div','position-chart-placeholder',positionChartRequests.has(key)?'Grafik yükleniyor…':cached?.error||'Grafik hazırlanıyor…'));
   if(cached?.error)box.append(el('p','stale',cached.error+' Son doğrulanmış grafik varsa yukarıda gösteriliyor.'));
