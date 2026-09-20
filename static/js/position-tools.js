@@ -3,6 +3,39 @@
 let pathBusy=false,orderPositionId=null,orderDisplayedQuantity=null,partialPositionId=null,partialDisplayedQuantity=null,targetsBusy=false,autoSellBusy=false;
 const pathDue=new Map(),pathErrors=new Map();
 const targetCache=new Map(),targetFrames=[['fifteen_minute','15 dakika'],['one_hour','Saatlik'],['daily','Günlük']];
+const positionChartCache=new Map(),positionChartRequests=new Map();
+function positionChartKey(p){return symbolOf(p)+'|'+exitFrames(p)[0];}
+function positionChartMaxAge(frame){return frame==='five_minute'?60000:frame==='fifteen_minute'?120000:frame==='one_hour'?300000:frame==='four_hour'?600000:900000;}
+async function ensurePositionChart(p,force=false){
+  const symbol=symbolOf(p),frame=exitFrames(p)[0],key=positionChartKey(p),cached=positionChartCache.get(key),age=Date.now()-(cached?.at||0),maxAge=cached?.error?30000:positionChartMaxAge(frame);
+  if((!force&&cached&&age<maxAge)||positionChartRequests.has(key))return positionChartRequests.get(key);
+  const request=api('/api/analyze',{symbol,frames:frame},60000).then(data=>{
+    const item=data?.item,series=item?.frames?.[frame]?.chart;
+    if(item?.coin?.symbol!==symbol||!Array.isArray(series)||series.length<2)throw Error('Grafik mumları doğrulanamadı.');
+    positionChartCache.set(key,{at:Date.now(),data:{frame,series,analyzedAt:item.analyzed_at,closedAt:item.frames[frame].closed_at}});
+  }).catch(error=>positionChartCache.set(key,{...cached,at:Date.now(),error:error.message||'Grafik alınamadı.'})).finally(()=>{positionChartRequests.delete(key);renderPortfolio();});
+  positionChartRequests.set(key,request);return request;
+}
+function drawPositionChart(canvas,p,data){
+  const v=fitCanvas(canvas);if(!v)return;const{ctx,w,h}=v,series=data.series.slice(-60);ctx.clearRect(0,0,w,h);if(series.length<2)return;
+  const left=8,right=w<480?58:72,top=14,bottom=24,width=w-left-right,height=h-top-bottom,x=i=>left+(i+.5)*width/series.length;
+  let low=Math.min(...series.map(c=>c.low)),high=Math.max(...series.map(c=>c.high)),span=high-low||Math.abs(high)*.001||1;
+  const q=quoteFor(symbolOf(p)),levels=[['Giriş',p.entry,'#83aaff'],['Hedef',p.target,'#1fd49a'],['Stop',p.stop,'#ff6478'],['Canlı',q?.price,'#ffc857']];
+  const nearby=levels.filter(([,value])=>num(value)&&value>=low-span*.2&&value<=high+span*.2);if(nearby.length){low=Math.min(low,...nearby.map(x=>x[1]));high=Math.max(high,...nearby.map(x=>x[1]));span=high-low||span;}
+  const pad=span*.08;low-=pad;high+=pad;const y=value=>top+height-(value-low)/(high-low)*height;
+  ctx.font='10px system-ui';ctx.textAlign='left';for(let i=0;i<4;i++){const value=low+(high-low)*i/3,yy=y(value);path(ctx,[[left,yy],[w-right,yy]],'#203752');ctx.fillStyle='#92a4bf';ctx.fillText(value.toLocaleString('tr-TR',{maximumSignificantDigits:6}),w-right+5,yy+3);}
+  series.forEach((c,i)=>{const color=c.close>=c.open?'#1fd49a':'#ff6478',xx=x(i),body=Math.max(2,width/series.length*.62);path(ctx,[[xx,y(c.high)],[xx,y(c.low)]],color);ctx.fillStyle=color;ctx.fillRect(xx-body/2,Math.min(y(c.open),y(c.close)),body,Math.max(1,Math.abs(y(c.open)-y(c.close))));});
+  for(const[label,value,color]of levels){if(!num(value)||value<low||value>high)continue;ctx.setLineDash(label==='Canlı'?[2,3]:[5,4]);path(ctx,[[left,y(value)],[w-right,y(value)]],color);ctx.setLineDash([]);ctx.fillStyle=color;ctx.fillText(label,left+3,Math.max(top+9,y(value)-3));}
+  ctx.fillStyle='#92a4bf';ctx.fillText(new Date(series[0].time*1000).toLocaleString('tr-TR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}),left,h-5);ctx.textAlign='right';ctx.fillText(new Date(series.at(-1).time*1000).toLocaleString('tr-TR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}),w-right,h-5);
+}
+function positionChartPanel(p){
+  const key=positionChartKey(p),frame=exitFrames(p)[0],cached=positionChartCache.get(key),box=el('section','position-mini-chart'),head=el('div','position-chart-head');
+  head.append(el('b','',frameName(frame)+' FİYAT GRAFİĞİ'),btn('YENİLE','link',()=>ensurePositionChart(p,true)));box.append(head);
+  if(cached?.data){const canvas=el('canvas');canvas.setAttribute('role','img');canvas.setAttribute('aria-label',symbolOf(p)+' '+frameName(frame)+' mum grafiği; giriş, hedef, stop ve canlı fiyat seviyeleri');box.append(canvas,el('p','position-chart-legend','● Mumlar · '+frameName(frame)+' kapanışları  |  Mavi giriş · Yeşil hedef · Kırmızı stop · Sarı canlı fiyat'),el('small','muted','Son kapanış: '+timeText(cached.data.closedAt*1000)+' · Grafik analizi: '+timeText(cached.data.analyzedAt)));bindCanvas(canvas,()=>drawPositionChart(canvas,p,cached.data));}
+  else box.append(el('div','position-chart-placeholder',positionChartRequests.has(key)?'Grafik yükleniyor…':cached?.error||'Grafik hazırlanıyor…'));
+  if(cached?.error)box.append(el('p','stale',cached.error+' Son doğrulanmış grafik varsa yukarıda gösteriliyor.'));
+  ensurePositionChart(p);return box;
+}
 function targetPanel(p){
   const box=el('section','period-targets'),cached=targetCache.get(symbolOf(p));
   box.append(el('b','','PERİYOT HEDEF / STOP DURUMU · GÜNCEL ANALİZ'));

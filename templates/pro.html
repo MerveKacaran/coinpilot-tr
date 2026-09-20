@@ -19,6 +19,7 @@
       <button class="nav" data-page="radar">◉ <span>Teknik Radar</span></button>
       <button class="nav" data-page="watchlist">★ <span>Takip Ettiklerim</span></button>
       <button class="nav" data-page="positions">▣ <span>Pozisyonlarım</span></button>
+      <button class="nav" data-page="performance">₺ <span>K/Z ve Emirler</span></button>
       <button class="nav" data-page="exits">↘ <span>Satış Takibi</span></button>
       <button class="nav" data-page="market">↗ <span>Piyasa Hareketi</span></button>
     </nav>
@@ -76,6 +77,22 @@
         <section class="panel backup-panel"><h2>Portföy yedeği</h2><p>Bu tarayıcıda saklanır. Başka cihazda aynı kayıtları görmek için yedeği aktar. İçe aktarma mevcut kayıtları silmez; kimliğe göre birleştirir.</p><button id="export-backup">YEDEĞİ İNDİR</button><label class="file-label">YEDEK YÜKLE<input type="file" id="import-backup" accept="application/json,.json"></label><p id="backup-message" role="status"></p></section>
         <section class="section-head"><div><small>GERÇEKLEŞEN SANAL İŞLEMLER</small><h2>İşlem geçmişi</h2></div><b id="realized-profit"></b></section>
         <div class="table-wrap"><table><thead><tr><th>Tarih</th><th>Coin</th><th>Giriş</th><th>Satış</th><th>Net K/Z</th><th>Yöntem / hedef geçmişi</th></tr></thead><tbody id="history"></tbody></table></div>
+      </section>
+      <section class="page" id="page-performance">
+        <div class="callout"><b>Kâr/zarar ve sanal emir kayıtları</b><span>Açık işlemler güncel kotasyonla tahmini, kapanan işlemler kayıtlı satış fiyatıyla hesaplanır. Komisyon ve kayma senin işlem açarken girdiğin varsayımlardır. Bu sayfadaki kayıtlar gerçek borsa emri değildir ve yalnızca bu tarayıcıdaki sanal portföye aittir.</span></div>
+        <div class="stats performance-stats">
+          <article><small>AÇIK POZİSYON K/Z</small><b id="performance-open-pnl">—</b><em id="performance-open-note">—</em></article>
+          <article><small>GERÇEKLEŞEN NET K/Z</small><b id="performance-realized-pnl">—</b><em id="performance-realized-note">—</em></article>
+          <article><small>BUGÜN GERÇEKLEŞEN K/Z</small><b id="performance-today-pnl">—</b><em id="performance-today-note">—</em></article>
+          <article><small>TOPLAM DURUM</small><b id="performance-total-pnl">—</b><em id="performance-total-note">—</em></article>
+        </div>
+        <section class="panel performance-summary"><small>ÖZET</small><h2>İşlem performansı</h2><div id="performance-summary"></div></section>
+        <section class="section-head"><div><small>COIN BAZINDA</small><h2>Kâr/zarar dökümü</h2></div></section>
+        <div class="table-wrap"><table><thead><tr><th>Coin</th><th>Gerçekleşen satış</th><th>Satılan maliyet</th><th>Gerçekleşen net K/Z</th><th>Kazanç / kayıp</th><th>Açık pozisyon</th><th>Açık tahmini K/Z</th></tr></thead><tbody id="performance-by-coin"></tbody></table></div>
+        <section class="section-head"><div><small>AÇIK VE İPTAL EDİLEN</small><h2>Limit emir durumu</h2></div><b id="pending-order-count"></b></section>
+        <div class="table-wrap"><table><thead><tr><th>Coin</th><th>Durum</th><th>Oluşturma</th><th>Limit fiyatı</th><th>Miktar</th><th>Geçmiş simülasyonu</th></tr></thead><tbody id="performance-orders"></tbody></table></div>
+        <section class="section-head"><div><small>TÜM KAPANIŞLAR</small><h2>Gerçekleşen sanal emir geçmişi</h2></div><b id="completed-order-count"></b></section>
+        <div class="table-wrap"><table><thead><tr><th>Tarih</th><th>Coin</th><th>İşlem türü</th><th>Satılan maliyet</th><th>Adet</th><th>Giriş → satış</th><th>Net K/Z</th><th>Getiri</th></tr></thead><tbody id="performance-completed"></tbody></table></div>
       </section>
       <section class="panel alerts-panel"><div class="section-head"><div><small>UYGULAMA İÇİ ALARMLAR</small><h2>Son değişiklikler</h2></div><label class="toggle"><input type="checkbox" id="alerts-enabled" checked> Açık</label></div><p class="muted">AL ve SAT sinyalleri birbirinden farklı 10 saniyelik seslerle bildirilir. Hedef ve stop temaslarının da ayrı ikazları vardır; net zarar ve diğer bildirimler kısa nötr ses kullanır. Sayfanın açık, bağlı ve tarayıcı ses izninin etkin olması gerekir. Puan kazanma olasılığı değildir. Otomatik sanal satış yalnızca ilgili pozisyonda sen açarsan çalışır.</p>
         <div class="sound-controls"><button id="sound-toggle" type="button" aria-pressed="false">SESLİ BİLDİRİMLERİ AÇ</button><button id="sound-resume" class="hidden" type="button">SESİ ETKİNLEŞTİR</button><button id="sound-test" type="button" disabled>SESİ DENE</button><label for="sound-volume">Ses düzeyi <output id="sound-volume-value" for="sound-volume">%70</output><input id="sound-volume" type="range" min="10" max="100" step="5" value="70"></label></div>

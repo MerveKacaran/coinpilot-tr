@@ -21,6 +21,10 @@ const assert=require('node:assert/strict');
     else if(u.pathname==='/api/quote')d={...d,coin:q()};
     else if(u.pathname==='/api/radar')d={...d,items:[],scanning:false,scanned:0,total:0,errors:[]};
     else if(u.pathname==='/api/targets')d={...d,symbol:'TEST/TRY',frames:{fifteen_minute:{target:111,stop:90},one_hour:{target:120,stop:90},daily:{target:150,stop:90}},errors:[],analyzed_at:iso(now())};
+    else if(u.pathname==='/api/analyze'){
+      const frame=u.searchParams.get('frames')||'one_hour',chart=Array.from({length:60},(_,i)=>({time:now()-(60-i)*3600,open:94+i*.02,close:94.1+i*.02,high:94.3+i*.02,low:93.8+i*.02}));
+      d={...d,item:{coin:q(),analyzed_at:iso(now()),frames:{[frame]:{chart,closed_at:chart.at(-1).time+3600}}}};
+    }
     else if(u.pathname==='/api/exit')return route.fulfill({status:503,json:{status:'error',message:'Testte sinyal yok'}});
     else if(u.pathname==='/api/price-path'){
       const t=Math.floor((now()-600)/60)*60,from=Number(u.searchParams.get('from'));
@@ -42,6 +46,9 @@ const assert=require('node:assert/strict');
   await page.reload();
   await page.waitForFunction(()=>state.positions.find(p=>p.id==='p1')?.sellOrder?.price===300);
   await page.evaluate(()=>switchPage('positions'));
+  await page.waitForFunction(()=>document.querySelector('#position-page-list .position-mini-chart canvas')?.width>0);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  const chartPixels=await page.locator('#position-page-list .position-mini-chart canvas').first().evaluate(c=>{const a=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let n=0;for(let i=3;i<a.length;i+=4)if(a[i])n++;return n;});assert.ok(chartPixels>300,'Mobile position chart rendered');
   await page.screenshot({path:'test-output/positions-mobile.png',fullPage:true});
   await page.evaluate(()=>cancelSellOrder('p1'));
   assert.equal(await page.evaluate(()=>state.positions.find(p=>p.id==='p1').sellOrder.status),'cancelled');
