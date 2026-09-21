@@ -3,7 +3,8 @@
 let pathBusy=false,orderPositionId=null,orderDisplayedQuantity=null,partialPositionId=null,partialDisplayedQuantity=null,targetsBusy=false,autoSellBusy=false;
 const pathDue=new Map(),pathErrors=new Map();
 const targetCache=new Map(),targetFrames=[['fifteen_minute','15 dakika'],['one_hour','Saatlik'],['daily','Günlük']];
-const positionChartCache=new Map(),positionChartRequests=new Map(),positionChartFrames=new Map();
+const positionChartCache=new Map(),positionChartRequests=new Map(),positionChartFrames=new Map(),positionChartDetails=new Set(),positionIndicatorChoices=new Map();
+const indicatorDefinitions=[['ema','EMA8 / EMA200'],['rsi','RSI(10)'],['macd','MACD'],['fisher','Fisher(30)'],['volume','Hacim']];
 function positionChartFrame(p){const selected=positionChartFrames.get(String(p.id));return catalog.some(([key])=>key===selected)?selected:exitFrames(p)[0];}
 function positionChartKey(p,frame=positionChartFrame(p)){return symbolOf(p)+'|'+frame;}
 function positionChartMaxAge(frame){return frame==='five_minute'?60000:frame==='fifteen_minute'?120000:frame==='one_hour'?300000:frame==='four_hour'?600000:900000;}
@@ -29,11 +30,43 @@ function drawPositionChart(canvas,p,data){
   for(const[label,value,color]of levels){if(!num(value)||value<low||value>high)continue;ctx.setLineDash(label==='Canlı'?[2,3]:[5,4]);path(ctx,[[left,y(value)],[w-right,y(value)]],color);ctx.setLineDash([]);ctx.fillStyle=color;ctx.fillText(label,left+3,Math.max(top+9,y(value)-3));}
   ctx.fillStyle='#92a4bf';ctx.fillText(new Date(series[0].time*1000).toLocaleString('tr-TR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}),left,h-5);ctx.textAlign='right';ctx.fillText(new Date(series.at(-1).time*1000).toLocaleString('tr-TR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}),w-right,h-5);
 }
+function positionCrosses(series,first,second){
+  const hits=[];for(let i=1;i<series.length;i++){const a=first(series[i-1]),b=second(series[i-1]),nextA=first(series[i]),nextB=second(series[i]);if(![a,b,nextA,nextB].every(num))continue;if(a<=b&&nextA>nextB)hits.push({i,direction:'up'});else if(a>=b&&nextA<nextB)hits.push({i,direction:'down'});}return hits;
+}
+function positionIndicatorStatus(series,choices){
+  const lines=[['ema','Fiyat / EMA200',p=>p.close,p=>p.ema],['ema','Fiyat / EMA8',p=>p.close,p=>p.ema8],['rsi','RSI(10) / 50',p=>p.rsi,()=>50],['macd','MACD mavi / kırmızı',p=>p.macd,p=>p.macd_signal],['fisher','Fisher mavi / kırmızı',p=>p.fisher,p=>p.fisher_signal]];
+  const rows=lines.filter(([key])=>choices.has(key)).map(([,name,first,second])=>{const hits=positionCrosses(series,first,second),last=hits.at(-1),row=el('div','position-indicator-status'),available=series.some(p=>num(first(p))&&num(second(p)));row.append(el('b','',name),el('span',last?(last.direction==='up'?'positive':'negative'):'muted',!available?'Veri yok':last?(last.direction==='up'?'↑ Yukarı kesişim · ':'↓ Aşağı kesişim · ')+timeText(series[last.i].time*1000):'Görünen mumlarda kesişim yok'));return row;});
+  if(choices.has('volume')){const latest=series.at(-1),previous=series.slice(-21,-1).map(p=>p.volume),average=previous.length===20&&previous.every(num)?previous.reduce((sum,value)=>sum+value,0)/20:null,row=el('div','position-indicator-status');row.append(el('b','','Hacim / önceki 20 mum'),el('span','muted',num(latest?.volume)&&positive(average)?'×'+(latest.volume/average).toFixed(2)+' · Son kapanmış mum':'Veri yok'));rows.push(row);}
+  return rows;
+}
+function drawPositionIndicators(canvas,series,choices){
+  const v=fitCanvas(canvas);if(!v)return;const{ctx,w,h}=v,rows=indicatorDefinitions.filter(([key])=>choices.has(key));ctx.clearRect(0,0,w,h);if(!rows.length)return;
+  const left=10,right=w<480?60:82,plotWidth=w-left-right,rowHeight=h/rows.length,x=i=>left+(i+.5)*plotWidth/series.length;
+  rows.forEach(([key,label],index)=>{
+    const top=index*rowHeight+22,height=rowHeight-39,fields=key==='ema'?['close','ema8','ema']:key==='rsi'?['rsi']:key==='macd'?['macd','macd_signal']:key==='fisher'?['fisher','fisher_signal']:['volume'];
+    const values=series.flatMap(c=>fields.map(field=>c[field])).filter(num);if(!values.length){ctx.fillStyle='#92a4bf';ctx.fillText(label+' · Veri yok',left,top);return;}
+    let low=Math.min(...values),high=Math.max(...values);if(key==='rsi'){low=0;high=100;}else if(key==='macd'||key==='fisher'){low=Math.min(low,0);high=Math.max(high,0);}else{const padding=(high-low||Math.abs(high)*.01||1)*.1;low-=padding;high+=padding;}
+    if(high===low){high+=1;low-=1;}const y=value=>top+height-(value-low)/(high-low)*height;
+    ctx.font='10px system-ui';ctx.textAlign='left';ctx.fillStyle='#bed2f1';ctx.fillText(label,left,top-7);path(ctx,[[left,top+height],[w-right,top+height]],'#27415d');
+    const baseline=key==='rsi'?50:key==='macd'||key==='fisher'?0:null;if(baseline!==null){ctx.setLineDash([3,3]);path(ctx,[[left,y(baseline)],[w-right,y(baseline)]],key==='rsi'?'#ffc857':'#5a6e88');ctx.setLineDash([]);}
+    if(key==='volume'){const width=Math.max(1,plotWidth/series.length*.65);series.forEach((c,i)=>{if(!num(c.volume))return;ctx.fillStyle=c.close>=c.open?'#1fd49a88':'#ff647888';ctx.fillRect(x(i)-width/2,y(c.volume),width,Math.max(1,top+height-y(c.volume)));});}
+    else fields.forEach((field,k)=>{const colors=key==='ema'?['#bdcfe6','#c99aff','#70a1ff']:['#70a1ff','#ff6478'];let points=[];series.forEach((c,i)=>{if(num(c[field]))points.push([x(i),y(c[field])]);else if(points.length>1){path(ctx,points,colors[k]);points=[];}});if(points.length>1)path(ctx,points,colors[k]);});
+    const pair=key==='ema'?[['close','ema8'],['close','ema']]:key==='rsi'?[['rsi',null]]:key==='macd'?[['macd','macd_signal']]:key==='fisher'?[['fisher','fisher_signal']]:[];
+    pair.forEach(([first,second])=>positionCrosses(series,c=>c[first],c=>second?c[second]:50).forEach(hit=>{const value=series[hit.i][first];if(!num(value))return;ctx.beginPath();ctx.arc(x(hit.i),y(value),3.3,0,Math.PI*2);ctx.fillStyle=hit.direction==='up'?'#1fd49a':'#ff6478';ctx.fill();}));
+    ctx.textAlign='right';ctx.fillStyle='#92a4bf';ctx.fillText(high.toLocaleString('tr-TR',{maximumSignificantDigits:4}),w-right+2,top+3);ctx.fillText(low.toLocaleString('tr-TR',{maximumSignificantDigits:4}),w-right+2,top+height);
+  });
+}
+function positionIndicatorPanel(p,series){
+  const id=String(p.id),details=el('details','position-indicators'),summary=el('summary','','TEKNİK GÖSTERGELER VE KESİŞİMLER');details.open=positionChartDetails.has(id);details.append(summary);summary.addEventListener('click',event=>{event.preventDefault();details.open=!details.open;if(details.open)positionChartDetails.add(id);else positionChartDetails.delete(id);if(details.open)requestAnimationFrame(redrawAll);});
+  const content=el('div','position-indicator-content'),choices=positionIndicatorChoices.get(id)||new Set(indicatorDefinitions.map(([key])=>key)),controls=el('div','position-indicator-controls');
+  for(const[key,label]of indicatorDefinitions){const item=el('label'),input=el('input');input.type='checkbox';input.value=key;input.checked=choices.has(key);input.addEventListener('change',()=>{const updated=new Set(positionIndicatorChoices.get(id)||choices);if(input.checked)updated.add(key);else updated.delete(key);positionIndicatorChoices.set(id,updated);renderPortfolio();});item.append(input,document.createTextNode(label));controls.append(item);}
+  const visible=series.slice(-60),canvas=el('canvas');canvas.setAttribute('role','img');canvas.setAttribute('aria-label',symbolOf(p)+' teknik göstergeler: EMA8, EMA200, RSI10, MACD, Fisher30 ve hacim');content.append(el('p','muted','Son 60 kapanmış mum · Yeşil nokta yukarı, kırmızı nokta aşağı kesişim. Teknik koşul veya satış emri değildir.'),controls,canvas,el('p','position-indicator-legend','EMA: beyaz fiyat, mor EMA8, mavi EMA200 · RSI: sarı 50 · MACD/Fisher: mavi ana, kırmızı sinyal · Kesikli çizgi: 0'));const status=el('div','position-indicator-statuses');status.append(...positionIndicatorStatus(visible,choices));content.append(status);details.append(content);bindCanvas(canvas,()=>{const selected=positionIndicatorChoices.get(id)||choices;canvas.style.height=Math.max(100,indicatorDefinitions.filter(([key])=>selected.has(key)).length*125)+'px';drawPositionIndicators(canvas,visible,selected);});return details;
+}
 function positionChartPanel(p){
   const frame=positionChartFrame(p),key=positionChartKey(p,frame),cached=positionChartCache.get(key),box=el('section','position-mini-chart'),head=el('div','position-chart-head'),actions=el('div','position-chart-actions'),select=el('select');
   select.setAttribute('aria-label',symbolOf(p)+' grafik periyodu');for(const[value,label]of catalog){const option=el('option','',label);option.value=value;select.append(option);}select.value=frame;select.addEventListener('change',()=>{positionChartFrames.set(String(p.id),select.value);ensurePositionChart(p,false,select.value);renderPortfolio();});
   actions.append(select,btn('YENİLE','link',()=>ensurePositionChart(p,true,frame)));head.append(el('b','',frameName(frame)+' FİYAT GRAFİĞİ'),actions);box.append(head);
-  if(cached?.data){const canvas=el('canvas');canvas.setAttribute('role','img');canvas.setAttribute('aria-label',symbolOf(p)+' '+frameName(frame)+' mum grafiği; giriş, hedef, stop ve canlı fiyat seviyeleri');box.append(canvas,el('p','position-chart-legend','● Mumlar · '+frameName(frame)+' kapanışları  |  Mavi giriş · Yeşil hedef · Kırmızı stop · Sarı canlı fiyat'),el('small','muted','Son kapanış: '+timeText(cached.data.closedAt*1000)+' · Grafik analizi: '+timeText(cached.data.analyzedAt)));bindCanvas(canvas,()=>drawPositionChart(canvas,p,cached.data));}
+  if(cached?.data){const canvas=el('canvas');canvas.setAttribute('role','img');canvas.setAttribute('aria-label',symbolOf(p)+' '+frameName(frame)+' mum grafiği; giriş, hedef, stop ve canlı fiyat seviyeleri');box.append(canvas,el('p','position-chart-legend','● Mumlar · '+frameName(frame)+' kapanışları  |  Mavi giriş · Yeşil hedef · Kırmızı stop · Sarı canlı fiyat'),el('small','muted','Son kapanış: '+timeText(cached.data.closedAt*1000)+' · Grafik analizi: '+timeText(cached.data.analyzedAt)),positionIndicatorPanel(p,cached.data.series));bindCanvas(canvas,()=>drawPositionChart(canvas,p,cached.data));}
   else box.append(el('div','position-chart-placeholder',positionChartRequests.has(key)?'Grafik yükleniyor…':cached?.error||'Grafik hazırlanıyor…'));
   if(cached?.error)box.append(el('p','stale',cached.error+' Son doğrulanmış grafik varsa yukarıda gösteriliyor.'));
   ensurePositionChart(p);return box;

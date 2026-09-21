@@ -235,6 +235,8 @@ function renderPerformance(){
 }
 function renderPortfolio(){let cost=0,value=0,complete=true;for(const p of state.positions){cost+=p.amount;const v=positionValue(p);if(v===null)complete=false;else value+=v;}
   for(const id of positionChartFrames.keys())if(!state.positions.some(p=>String(p.id)===id))positionChartFrames.delete(id);
+  for(const id of positionChartDetails)if(!state.positions.some(p=>String(p.id)===id))positionChartDetails.delete(id);
+  for(const id of positionIndicatorChoices.keys())if(!state.positions.some(p=>String(p.id)===id))positionIndicatorChoices.delete(id);
   byId('portfolio-value').textContent=complete?money(value):'Fiyat bekleniyor';byId('portfolio-profit').textContent=complete?money(value-cost):'—';byId('portfolio-profit').className=value>=cost?'positive':'negative';byId('portfolio-percent').textContent=complete?pct(cost?(value-cost)/cost*100:0):'—';byId('position-count').textContent=state.positions.length;
   for(const id of ['home-positions','radar-positions','position-page-list']){byId(id).replaceChildren(...(state.positions.length?state.positions.map(positionCard):[el('div','panel empty','Henüz açık sanal işlem yok.')]));}
   byId('history').replaceChildren(...state.history.map(p=>{const row=el('tr');[p.date,p.coin,money(p.entry),money(p.exit),(num(p.pnl)?money(p.pnl)+' · ':'')+pct(p.percent)].forEach((x,i)=>row.append(el('td',i===4?(p.percent>=0?'positive':'negative'):'',x)));const method=el('td','',p.executionNote||executionLabel(p.method));if(p.method==='history-minute')method.append(el('p','stale','Dakika içindeki kesin saat bilinmiyor. Kayda alınma: '+timeText(p.recordedAt)));if(p.tracking?.targetHit)method.append(el('p','positive','Hedef görüldü: '+hitLabel(p.tracking.targetHit)));if(p.tracking?.incomplete)method.append(el('p','stale','Geçmişte doğrulanamayan aralık var.'));row.append(method);return row;}));const known=state.history.filter(p=>num(p.pnl));byId('realized-profit').textContent='Kayıtlı net K/Z: '+money(known.reduce((sum,p)=>sum+p.pnl,0))+(known.length<state.history.length?' · Eski kayıtlarda TL tutarı yok':'');
@@ -300,7 +302,7 @@ function exitStatus(p){
 }
 function renderExitTracking(){
   const grid=byId('exit-grid');if(!grid)return;
-  const opened=new Set([...grid.querySelectorAll('details[open]')].map(n=>n.dataset.exitFrame));
+  const opened=new Set([...grid.querySelectorAll('.exit-details[open]')].map(n=>n.dataset.exitFrame));
   grid.replaceChildren();
   byId('exit-monitor-status').textContent=state.positions.length+' açık pozisyon · '+(exitBusy?'Satış kontrolleri yenileniyor…':'Teknik sinyaller uyarıdır; eklediğin sanal limit emirleri ayrıca izlenir.');
   if(!state.positions.length){grid.append(el('div','panel empty','Açık sanal işlemin yok. İşlem açtığında satış takibi burada otomatik başlayacak.'));return;}
