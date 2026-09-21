@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>CoinPilot TR · Piyasa Seçimi</title>
+  <link rel="stylesheet" href="{{ url_for('static',filename='css/gateway.css') }}?v={{ version }}">
+</head>
+<body>
+  <main class="gateway">
+    <div class="topline"><div class="brand">◈ CoinPilot <span>TR</span></div><span class="version">Sürüm {{ version }}</span></div>
+    <div class="intro"><span class="eyebrow">TEKNİK ANALİZ ÇALIŞMA ALANI</span><h1>Hangi piyasayı<br><em>inceleyelim?</em></h1><p>İki piyasa, iki ayrı çalışma alanı. Kripto portföyün ve mevcut ayarların aynen korunur.</p></div>
+    <div class="choices">
+      <a class="choice crypto" href="/crypto"><span class="choice-icon">₿</span><span class="choice-type">CANLI KRİPTO RADARI</span><strong>Kripto</strong><span class="choice-copy">BtcTurk TRY pariteleri, çoklu periyot analizi, takip listesi ve mevcut sanal portföyün.</span><span class="choice-go">Kripto alanına gir <span aria-hidden="true">↗</span></span></a>
+      <a class="choice bist" href="/bist"><span class="choice-icon">▥</span><span class="choice-type">BIST · İLK AŞAMA</span><strong>Borsa İstanbul</strong><span class="choice-copy">Kendi tarihli mum verinle EMA, RSI, MACD, Fisher, hacim ve hedef/stop analizi. Canlı fiyat değildir.</span><span class="choice-go">BIST alanına gir <span aria-hidden="true">↗</span></span></a>
+    </div>
+    <p class="caution">Sinyaller yatırım tavsiyesi veya kazanma olasılığı değildir. Gerçek emir gönderilmez.</p>
+    <footer>Developed by Merve Kaçaranlıoğlu Topçu</footer>
+  </main>
+</body>
+</html>

@@ -13,7 +13,9 @@ class ApiTests(unittest.TestCase):
     def test_template_and_version(self):
         response=self.client.get('/')
         self.assertEqual(response.status_code,200)
-        self.assertIn(web.VERSION.encode(),response.data)
+        self.assertIn('Borsa İstanbul'.encode(),response.data)
+        self.assertIn(b'/crypto',response.data)
+        self.assertIn(web.VERSION.encode(),self.client.get('/crypto').data)
 
     def test_each_single_frame(self):
         for key in web.FRAME_SPECS:

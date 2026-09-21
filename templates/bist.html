@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>CoinPilot TR · BIST Analiz</title>
+  <link rel="stylesheet" href="{{ url_for('static',filename='css/bist.css') }}?v={{ version }}">
+  <script defer src="{{ url_for('static',filename='js/bist.js') }}?v={{ version }}"></script>
+</head>
+<body>
+  <div class="layout">
+    <header class="topbar"><a class="logo" href="/">◈ CoinPilot <span>TR</span></a><nav aria-label="Piyasalar"><a href="/">Piyasa seçimi</a><a href="/crypto">Kripto</a><a class="current" href="/bist" aria-current="page">BIST</a></nav></header>
+    <main>
+      <section class="hero"><div><small>BORSA İSTANBUL · ANALİZ ÇALIŞMA ALANI</small><h1>Hisseyi değil,<br><em>koşulları oku.</em></h1><p>Kripto radarındaki EMA200, RSI10, MACD, Fisher30 ve hacim kurallarını BIST mum verisine uyguluyoruz. Her koşulun neden sağlandığını ayrı gösteriyoruz.</p></div><div class="hero-mark" aria-hidden="true">▥<span>BIST</span></div></section>
+      <div class="disclosure"><strong>İlk aşama · veri yüklemeli analiz</strong><span>Burada canlı BIST bağlantısı veya otomatik tarama yoktur. Fiyat, yüklediğin CSV dosyasındaki son kapanıştır; veri tarihi sonuçta görünür. Gerçek alım-satım emri ve otomatik satış yapılmaz.</span></div>
+      <div class="work-grid">
+        <section class="panel upload-panel"><div class="section-kicker">01 / VERİYİ SEÇ</div><h2>Hisse analizi</h2><p class="muted">Aracı kurumundan ya da kullanma hakkın olan bir kaynaktan kapanmış OHLCV mumlarını CSV olarak dışa aktar.</p>
+          <form id="analyze-form">
+            <label>Hisse kodu<input id="symbol" name="symbol" maxlength="8" placeholder="Örn. THYAO" autocomplete="off" required></label>
+            <label>Veri periyodu<select id="frame" name="frame"><option value="daily">Günlük</option><option value="four_hour">4 saatlik</option><option value="one_hour">Saatlik</option><option value="fifteen_minute">15 dakikalık</option><option value="five_minute">5 dakikalık</option></select></label>
+            <label>CSV dosyası<input id="file" name="file" type="file" accept=".csv,text/csv" required></label>
+            <button id="analyze-button" type="submit">KOŞULLARI ANALİZ ET <span aria-hidden="true">↗</span></button>
+          </form>
+          <p id="message" class="message" role="status" aria-live="polite"></p>
+          <details class="format-help"><summary>CSV biçimi nasıl olmalı?</summary><p>En az 210 kapanmış mum gerekli. Başlık tam olarak aşağıdaki gibi olmalı; ayraç virgül veya noktalı virgül olabilir. Günlükte tarih, diğerlerinde mum başlangıç tarihi ve saati gir. Saatler İstanbul saatidir. Dosyada tek hisse ve tek periyot bulunmalı.</p><pre>date,open,high,low,close,volume
+2025-09-18,300.10,307.20,298.50,305.00,1250000
+2025-09-19,305.00,309.40,301.80,308.60,1380000</pre><p>Örnek sayılar piyasa verisi değildir. Fiyat geçmişinin bedelsiz/temettü düzeltmesi veri sağlayıcına bağlıdır.</p></details>
+        </section>
+        <aside class="panel method-panel"><div class="section-kicker">02 / ANALİZ MANTIĞI</div><h2>5 açık kontrol</h2><ol><li><b>EMA200</b><span>Kapanış uzun dönem ortalamanın üzerinde mi?</span></li><li><b>RSI(10)</b><span>50 üzeri yükseliş veya yukarı kesişim var mı?</span></li><li><b>MACD</b><span>Sıfır üstü/yakını ve yukarı yönlü çizgi teyidi var mı?</span></li><li><b>Fisher(30)</b><span>Sıfır üstü/yakını ve yukarı yönlü kesişim var mı?</span></li><li><b>Hacim</b><span>Son mum önceki 20 mum ortalamasını aşıyor mu?</span></li></ol><p class="method-note">3/5 incelemeye değer aday; 5/5 tam teyit. Bunlar kazanma olasılığı değildir. Hedef/stop geçmiş veriden türetilen teknik seviyelerdir.</p><a href="https://www.kap.org.tr/tr/bildirim-sorgu" target="_blank" rel="noopener noreferrer">KAP bildirimlerini ayrıca kontrol et ↗</a></aside>
+      </div>
+      <section id="result" class="result" hidden aria-live="polite">
+        <div class="result-head"><div><small>VERİYE DAYALI SONUÇ</small><h2 id="result-symbol"></h2><p id="result-source"></p></div><div id="result-badge" class="badge"></div></div>
+        <div class="metrics"><div><small>Son CSV kapanışı</small><strong id="result-price">—</strong></div><div><small>Koşul</small><strong id="result-count">—</strong></div><div><small>Teknik hedef</small><strong id="result-target">—</strong></div><div><small>Risk kontrollü stop</small><strong id="result-stop">—</strong></div></div>
+        <p id="result-warning" class="result-warning"></p>
+        <div class="result-columns"><section class="panel"><div class="section-kicker">KOŞUL DÖKÜMÜ</div><h3>Neler uygun?</h3><div id="checks"></div></section><section class="panel"><div class="section-kicker">FİYAT YAPISI</div><h3>Kapanmış mumlar</h3><div class="chart-legend"><span class="legend-close">● Kapanış</span><span class="legend-ema">● EMA200</span><span class="legend-target">● Hedef</span><span class="legend-stop">● Stop</span></div><canvas id="price-chart" height="250" aria-label="Kapanış, EMA200, hedef ve stop grafiği" role="img"></canvas></section></div>
+        <section class="panel detail-panel"><div class="section-kicker">GÖSTERGE DETAYI</div><h3>Kesişim ve yön</h3><div id="indicator-details" class="indicator-details"></div><p class="muted">İndikatör çizgileri kapanmış mumlardan hesaplanır. Hisse bölünmeleri ve temettü düzeltmeleri dosyada yoksa analiz yanıltıcı olabilir.</p></section>
+      </section>
+    </main>
+    <footer>CoinPilot TR · Sürüm {{ version }} · Developed by <b>Merve Kaçaranlıoğlu Topçu</b><br>Yatırım tavsiyesi değildir · BIST verisi otomatik çekilmez.</footer>
+  </div>
+</body>
+</html>

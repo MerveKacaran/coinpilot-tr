@@ -31,7 +31,7 @@ const assert=require('node:assert/strict');
     await route.fulfill({json:d});
   });
   const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
-  await page.goto('http://127.0.0.1:10001/');
+  await page.goto('http://127.0.0.1:10001/crypto');
   await page.waitForFunction(()=>targetCache.get('TEST/TRY')?.data);
   await page.evaluate(()=>switchPage('positions'));
   const targetStatuses=await page.locator('#page-positions [data-position-id="target"] .target-status').allTextContents();

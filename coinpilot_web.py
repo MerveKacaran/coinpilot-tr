@@ -16,6 +16,7 @@ import websocket
 from flask import Flask, jsonify, render_template, request
 from coinpilot_path import path_window, parse_path
 from coinpilot_engine import VERSION, FRAME_SPECS, validate_candles, analyse_frame, build_signal, backtest
+from coinpilot_bist import analyze_uploaded_bist
 
 app=Flask(__name__)
 app.json.ensure_ascii=False
@@ -281,8 +282,32 @@ def no_stale_api(response):
     return response
 
 
+UI_VERSION='4.7.0'
+
+
 @app.get('/')
-def home():return render_template('pro.html',version='4.6.3',rules_version=VERSION)
+def home():return render_template('choose.html',version=UI_VERSION)
+
+
+@app.get('/crypto')
+def crypto_home():return render_template('pro.html',version=UI_VERSION,rules_version=VERSION)
+
+
+@app.get('/bist')
+def bist_home():return render_template('bist.html',version=UI_VERSION,rules_version=VERSION)
+
+
+@app.post('/api/bist/analyze')
+def bist_analyze():
+    try:
+        upload=request.files.get('file')
+        if not upload:raise ValueError('CSV dosyası seç.')
+        if request.content_length and request.content_length>2_100_000:raise ValueError('Dosya en fazla 2 MB olabilir.')
+        raw=upload.read(2_000_001)
+        if len(raw)>2_000_000:raise ValueError('Dosya en fazla 2 MB olabilir.')
+        result=analyze_uploaded_bist(raw,request.form.get('symbol',''),request.form.get('frame','daily'))
+        return jsonify(status='success',result=result,version=VERSION)
+    except (ValueError,UnicodeError) as exc:return jsonify(status='error',message=str(exc)),400
 
 
 @app.get('/api/dashboard')

@@ -3,7 +3,7 @@ const {chromium}=require('playwright');
 const assert=require('node:assert/strict');
 const fs=require('node:fs/promises');
 const path=require('node:path');
-const base=process.env.TEST_URL||'http://127.0.0.1:10001';
+const base=process.env.TEST_URL||'http://127.0.0.1:10001/crypto';
 const names={one_hour:'1 Saat',four_hour:'4 Saat',five_minute:'5 Dakika',fifteen_minute:'15 Dakika',daily:'Günlük'};
 let price=100,entryPrice=102,quotePrice=105,failedQuote=false,analyzeCalls=0,testBrowser,unsafeMode=0,exitCalls=0,buyScore=86,buyChecks=5,delayFrame=false;
 const quote=(value=price)=>({symbol:'TEST/TRY',pair:'TESTTRY',price:value,change:3,bid:value-.02,ask:value+.02,price_updated_at:new Date().toISOString(),price_source:'Test fixture'});
