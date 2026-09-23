@@ -4,6 +4,38 @@ const money=value=>Number.isFinite(value)?'₺'+new Intl.NumberFormat('tr-TR',{m
 const precise=value=>Number.isFinite(value)?new Intl.NumberFormat('tr-TR',{maximumFractionDigits:3}).format(value):'—';
 let current=null;
 
+const tvStorageKey='coinpilot-bist-tv-symbol';
+function normalizeBistSymbol(value){
+  const symbol=String(value||'').trim().toUpperCase().replace(/^BIST:/,'').replace(/\.IS$/,'');
+  return /^[A-Z0-9]{3,8}$/.test(symbol)?symbol:null;
+}
+function tradingViewWidget(containerId,source,settings){
+  const container=$(containerId),widget=document.createElement('div'),script=document.createElement('script');
+  widget.className='tradingview-widget-container__widget';
+  script.type='text/javascript';script.async=true;script.src='https://s3.tradingview.com/external-embedding/'+source;
+  script.textContent=JSON.stringify(settings);
+  container.replaceChildren(widget,script);
+}
+function openTradingViewSymbol(value,announce=true){
+  const symbol=normalizeBistSymbol(value);
+  if(!symbol){$('tv-message').textContent='3–8 karakterli geçerli bir BIST kodu gir. Örnek: THYAO.';return false;}
+  $('tv-symbol').value=symbol;$('tv-chart-title').textContent=symbol;$('tv-analysis-title').textContent=symbol;
+  document.querySelectorAll('[data-tv-symbol]').forEach(button=>button.classList.toggle('selected',button.dataset.tvSymbol===symbol));
+  try{localStorage.setItem(tvStorageKey,symbol);}catch(error){}
+  tradingViewWidget('tv-chart','embed-widget-advanced-chart.js',{
+    autosize:true,symbol:'BIST:'+symbol,interval:'60',timezone:'Europe/Istanbul',theme:'dark',style:'1',locale:'tr',
+    backgroundColor:'rgba(8, 21, 37, 1)',gridColor:'rgba(38, 59, 86, 0.45)',allow_symbol_change:true,
+    save_image:false,calendar:false,hide_side_toolbar:false,withdateranges:true,support_host:'https://www.tradingview.com'
+  });
+  tradingViewWidget('tv-technical','embed-widget-technical-analysis.js',{
+    interval:'1h',width:'100%',height:'100%',isTransparent:true,symbol:'BIST:'+symbol,
+    showIntervalTabs:true,displayMode:'single',locale:'tr',colorTheme:'dark'
+  });
+  $('tv-message').textContent=symbol+' için TradingView ekranı açıldı. Fiyat ve göstergeler yaklaşık 15 dakika gecikmeli olabilir.';
+  if(announce)$('tv-chart').scrollIntoView({behavior:'smooth',block:'center'});
+  return true;
+}
+
 function line(ctx,points,color,width=2,dash=[]){
   ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=width;ctx.setLineDash(dash);
   points.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.stroke();ctx.setLineDash([]);
@@ -86,4 +118,9 @@ form.addEventListener('submit',async event=>{
   }catch(error){$('message').textContent=error.message;}
   finally{button.disabled=false;}
 });
+$('tv-symbol-form').addEventListener('submit',event=>{event.preventDefault();openTradingViewSymbol($('tv-symbol').value);});
+$('tv-symbol').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();openTradingViewSymbol(event.currentTarget.value);}});
+document.querySelectorAll('[data-tv-symbol]').forEach(button=>button.addEventListener('click',()=>openTradingViewSymbol(button.dataset.tvSymbol)));
 window.addEventListener('resize',()=>requestAnimationFrame(drawChart));
+let initialSymbol='THYAO';try{initialSymbol=normalizeBistSymbol(localStorage.getItem(tvStorageKey))||initialSymbol;}catch(error){}
+openTradingViewSymbol(initialSymbol,false);

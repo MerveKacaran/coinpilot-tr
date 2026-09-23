@@ -282,7 +282,7 @@ def no_stale_api(response):
     return response
 
 
-UI_VERSION='4.7.0'
+UI_VERSION='4.7.1'
 
 
 @app.get('/')

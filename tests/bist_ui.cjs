@@ -17,10 +17,19 @@ function csv(){
   try{
     const page=await browser.newPage({viewport:{width:1280,height:900}}),errors=[];
     page.on('pageerror',e=>errors.push(e.message));
+    await page.route('https://s3.tradingview.com/**',route=>route.fulfill({contentType:'application/javascript',body:''}));
     await page.goto('http://127.0.0.1:10001/');
     assert.equal(await page.locator('.choice').count(),2);
     await page.getByRole('link',{name:/Borsa İstanbul/}).click();
     assert.match(page.url(),/\/bist$/);
+    assert.equal(await page.locator('#tv-chart script').count(),1);
+    assert.match(await page.locator('#tv-chart script').textContent(),/BIST:THYAO.*interval.*60/s);
+    assert.match(await page.locator('#tv-technical script').textContent(),/BIST:THYAO.*showIntervalTabs/s);
+    await page.locator('[data-tv-symbol=ASELS]').click();
+    assert.equal(await page.locator('#tv-chart-title').textContent(),'ASELS');
+    assert.match(await page.locator('#tv-chart script').textContent(),/BIST:ASELS/);
+    await page.reload();
+    assert.equal(await page.locator('#tv-chart-title').textContent(),'ASELS','selected BIST symbol persists');
     await page.locator('#symbol').fill('THYAO');
     await page.locator('#file').setInputFiles({name:'THYAO.csv',mimeType:'text/csv',buffer:csv()});
     await page.locator('#analyze-button').click();
@@ -31,6 +40,7 @@ function csv(){
     await page.screenshot({path:'test-output/bist-desktop.png',fullPage:true});
     const mobile=await browser.newPage({viewport:{width:390,height:844}});
     mobile.on('pageerror',e=>errors.push(e.message));
+    await mobile.route('https://s3.tradingview.com/**',route=>route.fulfill({contentType:'application/javascript',body:''}));
     await mobile.goto('http://127.0.0.1:10001/bist');
     assert.ok(await mobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'BIST mobile overflow');
     await mobile.screenshot({path:'test-output/bist-mobile.png',fullPage:true});

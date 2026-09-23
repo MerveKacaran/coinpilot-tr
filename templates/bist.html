@@ -10,10 +10,19 @@
   <div class="layout">
     <header class="topbar"><a class="logo" href="/">◈ CoinPilot <span>TR</span></a><nav aria-label="Piyasalar"><a href="/">Piyasa seçimi</a><a href="/crypto">Kripto</a><a class="current" href="/bist" aria-current="page">BIST</a></nav></header>
     <main>
-      <section class="hero"><div><small>BORSA İSTANBUL · ANALİZ ÇALIŞMA ALANI</small><h1>Hisseyi değil,<br><em>koşulları oku.</em></h1><p>Kripto radarındaki EMA200, RSI10, MACD, Fisher30 ve hacim kurallarını BIST mum verisine uyguluyoruz. Her koşulun neden sağlandığını ayrı gösteriyoruz.</p></div><div class="hero-mark" aria-hidden="true">▥<span>BIST</span></div></section>
-      <div class="disclosure"><strong>İlk aşama · veri yüklemeli analiz</strong><span>Burada canlı BIST bağlantısı veya otomatik tarama yoktur. Fiyat, yüklediğin CSV dosyasındaki son kapanıştır; veri tarihi sonuçta görünür. Gerçek alım-satım emri ve otomatik satış yapılmaz.</span></div>
+      <section class="hero"><div><small>BORSA İSTANBUL · ANALİZ ÇALIŞMA ALANI</small><h1>Hisseyi değil,<br><em>koşulları oku.</em></h1><p>TradingView'ın gecikmeli BIST ekranı ile grafiği incelerken, kendi kapanmış mum dosyanla CoinPilot'ın EMA200, RSI10, MACD, Fisher30 ve hacim kurallarını ayrıca çalıştırabilirsin.</p></div><div class="hero-mark" aria-hidden="true">▥<span>BIST</span></div></section>
+      <div class="disclosure"><strong>Gecikmeli piyasa görünümü</strong><span>TradingView grafiği ve teknik özeti yaklaşık 15 dakika gecikmeli olabilir. Bu alan CoinPilot'ın 5/5 radarı değildir ve gerçek emir göndermez. CSV analizi aşağıda bağımsız olarak çalışır.</span></div>
+      <section class="tv-workspace panel" aria-labelledby="tv-heading">
+        <div class="tv-workspace-head"><div><div class="section-kicker">01 / TRADINGVIEW PİYASA EKRANI</div><h2 id="tv-heading">Hisse grafiği ve teknik görünüm</h2><p class="muted">Hisse kodunu yaz; gelişmiş mum grafiği ile TradingView'ın periyot bazlı teknik değerlendirmesi birlikte açılsın.</p></div><span class="delay-badge">● 15 DK GECİKMELİ</span></div>
+        <form id="tv-symbol-form" class="symbol-search">
+          <label for="tv-symbol">BIST hisse kodu</label><div><input id="tv-symbol" maxlength="8" value="THYAO" placeholder="Örn. THYAO" autocomplete="off"><button type="submit">GRAFİĞİ AÇ <span aria-hidden="true">↗</span></button></div>
+        </form>
+        <div class="symbol-shortcuts" aria-label="Sık kullanılan hisseler"><button type="button" data-tv-symbol="THYAO">THYAO</button><button type="button" data-tv-symbol="ASELS">ASELS</button><button type="button" data-tv-symbol="TUPRS">TUPRS</button><button type="button" data-tv-symbol="GARAN">GARAN</button><button type="button" data-tv-symbol="KCHOL">KCHOL</button><button type="button" data-tv-symbol="BIMAS">BIMAS</button><button type="button" data-tv-symbol="AKBNK">AKBNK</button><button type="button" data-tv-symbol="EREGL">EREGL</button></div>
+        <p id="tv-message" class="tv-message" role="status" aria-live="polite">THYAO gecikmeli piyasa ekranı hazırlanıyor…</p>
+        <div class="tv-grid"><section class="tv-card"><div class="tv-card-title"><div><small>GELİŞMİŞ GRAFİK</small><h3 id="tv-chart-title">THYAO</h3></div><span>Mum · çizimler · indikatörler</span></div><div id="tv-chart" class="tradingview-widget-container tv-chart" aria-label="TradingView BIST grafiği"></div></section><aside class="tv-card"><div class="tv-card-title"><div><small>TEKNİK ÖZET</small><h3 id="tv-analysis-title">THYAO</h3></div><span>Periyot seçilebilir</span></div><div id="tv-technical" class="tradingview-widget-container tv-technical" aria-label="TradingView teknik değerlendirmesi"></div><p class="tv-caveat">TradingView'ın “Al/Sat” özeti kendi hesaplamasıdır; CoinPilot'ın 5 koşullu stratejisi veya kazanma ihtimali değildir.</p></aside></div>
+      </section>
       <div class="work-grid">
-        <section class="panel upload-panel"><div class="section-kicker">01 / VERİYİ SEÇ</div><h2>Hisse analizi</h2><p class="muted">Aracı kurumundan ya da kullanma hakkın olan bir kaynaktan kapanmış OHLCV mumlarını CSV olarak dışa aktar.</p>
+        <section class="panel upload-panel"><div class="section-kicker">02 / COINPILOT ÖZEL ANALİZİ</div><h2>Kapanmış mum dosyanı incele</h2><p class="muted">Aracı kurumundan ya da kullanma hakkın olan bir kaynaktan kapanmış OHLCV mumlarını CSV olarak dışa aktar.</p>
           <form id="analyze-form">
             <label>Hisse kodu<input id="symbol" name="symbol" maxlength="8" placeholder="Örn. THYAO" autocomplete="off" required></label>
             <label>Veri periyodu<select id="frame" name="frame"><option value="daily">Günlük</option><option value="four_hour">4 saatlik</option><option value="one_hour">Saatlik</option><option value="fifteen_minute">15 dakikalık</option><option value="five_minute">5 dakikalık</option></select></label>
@@ -25,7 +34,7 @@
 2025-09-18,300.10,307.20,298.50,305.00,1250000
 2025-09-19,305.00,309.40,301.80,308.60,1380000</pre><p>Örnek sayılar piyasa verisi değildir. Fiyat geçmişinin bedelsiz/temettü düzeltmesi veri sağlayıcına bağlıdır.</p></details>
         </section>
-        <aside class="panel method-panel"><div class="section-kicker">02 / ANALİZ MANTIĞI</div><h2>5 açık kontrol</h2><ol><li><b>EMA200</b><span>Kapanış uzun dönem ortalamanın üzerinde mi?</span></li><li><b>RSI(10)</b><span>50 üzeri yükseliş veya yukarı kesişim var mı?</span></li><li><b>MACD</b><span>Sıfır üstü/yakını ve yukarı yönlü çizgi teyidi var mı?</span></li><li><b>Fisher(30)</b><span>Sıfır üstü/yakını ve yukarı yönlü kesişim var mı?</span></li><li><b>Hacim</b><span>Son mum önceki 20 mum ortalamasını aşıyor mu?</span></li></ol><p class="method-note">3/5 incelemeye değer aday; 5/5 tam teyit. Bunlar kazanma olasılığı değildir. Hedef/stop geçmiş veriden türetilen teknik seviyelerdir.</p><a href="https://www.kap.org.tr/tr/bildirim-sorgu" target="_blank" rel="noopener noreferrer">KAP bildirimlerini ayrıca kontrol et ↗</a></aside>
+        <aside class="panel method-panel"><div class="section-kicker">03 / ANALİZ MANTIĞI</div><h2>5 açık kontrol</h2><ol><li><b>EMA200</b><span>Kapanış uzun dönem ortalamanın üzerinde mi?</span></li><li><b>RSI(10)</b><span>50 üzeri yükseliş veya yukarı kesişim var mı?</span></li><li><b>MACD</b><span>Sıfır üstü/yakını ve yukarı yönlü çizgi teyidi var mı?</span></li><li><b>Fisher(30)</b><span>Sıfır üstü/yakını ve yukarı yönlü kesişim var mı?</span></li><li><b>Hacim</b><span>Son mum önceki 20 mum ortalamasını aşıyor mu?</span></li></ol><p class="method-note">3/5 incelemeye değer aday; 5/5 tam teyit. Bunlar kazanma olasılığı değildir. Hedef/stop geçmiş veriden türetilen teknik seviyelerdir.</p><a href="https://www.kap.org.tr/tr/bildirim-sorgu" target="_blank" rel="noopener noreferrer">KAP bildirimlerini ayrıca kontrol et ↗</a></aside>
       </div>
       <section id="result" class="result" hidden aria-live="polite">
         <div class="result-head"><div><small>VERİYE DAYALI SONUÇ</small><h2 id="result-symbol"></h2><p id="result-source"></p></div><div id="result-badge" class="badge"></div></div>
@@ -35,7 +44,7 @@
         <section class="panel detail-panel"><div class="section-kicker">GÖSTERGE DETAYI</div><h3>Kesişim ve yön</h3><div id="indicator-details" class="indicator-details"></div><p class="muted">İndikatör çizgileri kapanmış mumlardan hesaplanır. Hisse bölünmeleri ve temettü düzeltmeleri dosyada yoksa analiz yanıltıcı olabilir.</p></section>
       </section>
     </main>
-    <footer>CoinPilot TR · Sürüm {{ version }} · Developed by <b>Merve Kaçaranlıoğlu Topçu</b><br>Yatırım tavsiyesi değildir · BIST verisi otomatik çekilmez.</footer>
+    <footer>CoinPilot TR · Sürüm {{ version }} · Developed by <b>Merve Kaçaranlıoğlu Topçu</b><br>Yatırım tavsiyesi değildir · TradingView BIST verisi yaklaşık 15 dakika gecikmeli olabilir.</footer>
   </div>
 </body>
 </html>
